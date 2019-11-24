@@ -1,0 +1,30 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "Nobunanimation",
+	"Description": "Plugin for designing procedural animations.",
+	"Category": "Animation",
+	"CreatedBy": "Nobuna-no",
+	"CreatedByURL": "https://github.com/Nobuna-dono",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+  	"EnabledByDefault": true,
+	"CanContainContent": true,
+	"IsBetaVersion": true,
+	"Installed": false,
+
+	"Modules": [
+		{
+			"Name": "Nobunanim",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "NobunanimEditor",
+			"Type": "Editor",
+			"LoadingPhase": "PostEngineInit"
+		},
+	]
+}
