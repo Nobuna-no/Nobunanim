@@ -2,29 +2,26 @@
 
 using UnrealBuildTool;
 
-public class ProceduralAnimationEditor : ModuleRules
+public class NobunanimEditor : ModuleRules
 {
-	public ProceduralAnimationEditor(ReadOnlyTargetRules Target) : base(Target)
+	public NobunanimEditor(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
-		
-		//PublicIncludePaths.AddRange(
-		//	new string[] {
-		//		"ProceduralAnimationEditor/Public"
-		//		// ... add public include paths required here ...
-		//	}
-		//	);
-				
-		
-		//PrivateIncludePaths.AddRange(
-		//	new string[] {
-		//		"ProceduralAnimationEditor/Private",
-		//		// ... add other private include paths required here ...
-		//	}
-		//	);
-			
-		
-		PublicDependencyModuleNames.AddRange(
+
+        PublicIncludePaths.AddRange(
+            new string[] {
+                // ... add public include paths required here ...
+            }
+            );
+
+        PrivateIncludePaths.AddRange(
+            new string[] {
+                // ... add other private include paths required here ...
+            }
+            );
+
+
+        PublicDependencyModuleNames.AddRange(
 			new string[]
 			{
 				"Core",
@@ -33,6 +30,7 @@ public class ProceduralAnimationEditor : ModuleRules
                 "AssetRegistry",
                 "PropertyEditor",
                 "AdvancedPreviewScene"
+
 				// ... add other public dependencies that you statically link with here ...
 			}
 			);
@@ -53,8 +51,6 @@ public class ProceduralAnimationEditor : ModuleRules
                 "AssetRegistry",
                 "PropertyEditor",
                 "AdvancedPreviewScene",
-                //"Paper2D"
-
 
 				// ... add private dependencies that you statically link with here ...	
 			}
