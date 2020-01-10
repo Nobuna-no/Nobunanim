@@ -9,6 +9,8 @@ class UCurveFloat;
 class UGaitDataAsset;
 class USkeletalMeshComponent;
 class IProceduralGaitInterface;
+class UProceduralGaitAnimInstance;
+struct FGaitDebugData;
 
 USTRUCT(BlueprintType)
 struct FGaitEffectorData
@@ -48,7 +50,7 @@ class NOBUNANIM_API UGaitController : public UActorComponent
 		/** Current time buffer used to compute current time.*/
 		float TimeBuffer = 0;
 		/** Owned anim instance. */
-		IProceduralGaitInterface* AnimInstanceRef = nullptr;
+		UProceduralGaitAnimInstance* AnimInstanceRef = nullptr;
 
 	protected:
 		/** Owned mesh. */
@@ -67,6 +69,12 @@ class NOBUNANIM_API UGaitController : public UActorComponent
 		UPROPERTY(Category = "[NOBUNANIM]|Gait Controller", EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "0.001", ClampMax = "10", SliderMin = "0.001", SliderMax = "10.f"))
 		float PlayRate = 1.f;
 
+		/** Show effector debug. */
+		UPROPERTY(Category = "[NOBUNANIM]|Gait Controller", EditAnywhere, BlueprintReadWrite)
+		bool bShowDebug = false;
+
+		FVector LastVelocity;
+
 	public:	
 		// Sets default values for this component's properties
 		UGaitController();
@@ -82,11 +90,18 @@ class NOBUNANIM_API UGaitController : public UActorComponent
 		UFUNCTION(Category = "[NOBUNANIM]|Gait Controller", BlueprintNativeEvent, BlueprintCallable)
 		void UpdateGaitMode(const FName& NewGaitName);
 
-
+#if WITH_EDITOR
+		/** Toggle NOBUNANIM gait controller debug. */
+		UFUNCTION(Exec, Category = "[NOBUNANIM]|Gait Controller")
+		void ShowGaitDebug();
+#endif
+		
 	private:
 		/** Update effectors data.*/
 		void UpdateEffectors();
 
 		/** AARJHALJKDHFLKJDAHL(some kind of dying scream). */
 		bool IsInRange(float Value, float Min, float Max, float& OutRangeMin, float& OutRangeMax);
+
+		void DrawGaitDebug(FVector Position, FVector EffectorLocation, FVector CurrentLocation, float Treshold, bool bAutoAdjustWithIdealEffector, bool bForceSwing, const FGaitDebugData* DebugData);
 };
