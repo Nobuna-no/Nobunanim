@@ -11,6 +11,9 @@ class USkeletalMeshComponent;
 class IProceduralGaitInterface;
 class UProceduralGaitAnimInstance;
 struct FGaitDebugData;
+class UCurveLinearColor;
+
+DECLARE_DYNAMIC_DELEGATE(FSwingEvent);
 
 USTRUCT(BlueprintType)
 struct FGaitEffectorData
@@ -33,6 +36,14 @@ struct FGaitEffectorData
 	/** @to do: Documentation. */
 	UPROPERTY(Category = "[NOBUNANIM]|Effector Data", EditAnywhere, BlueprintReadWrite)
 	float EndForceSwingInterval = 0;
+
+	//FSwingEvent OnBeginSwing;
+	//FSwingEvent OnEndSwing;
+
+	//FSwingEvent OnBeginForceSwing;
+	//FSwingEvent OnEndForceSwing;
+	float BlockTime = -1.f;
+	bool bFlipFlop = false;
 };
 
 
@@ -62,18 +73,35 @@ class NOBUNANIM_API UGaitController : public UActorComponent
 		TMap<FName, UGaitDataAsset*> GaitsData;
 
 		/** Map of Gaits data. Keys are the name of the Gait. */
-		UPROPERTY(Category = "[NOBUNANIM]|Gait Controller", EditAnywhere, BlueprintReadOnly)
+		//UPROPERTY(Category = "[NOBUNANIM]|Gait Controller", EditAnywhere, BlueprintReadOnly)
 		TMap<FName, FGaitEffectorData> Effectors;
 
 		/** Current playrate of the cycle.*/
 		UPROPERTY(Category = "[NOBUNANIM]|Gait Controller", EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "0.001", ClampMax = "10", SliderMin = "0.001", SliderMax = "10.f"))
 		float PlayRate = 1.f;
+		
+		/** Target FPS for LOD. */
+		UPROPERTY(Category = "[NOBUNANIM]|Gait Controller|Optimization", EditAnywhere, BlueprintReadOnly)
+		TMap<int32, int32> LODTargetFPS;
 
 		/** Show effector debug. */
-		UPROPERTY(Category = "[NOBUNANIM]|Gait Controller", EditAnywhere, BlueprintReadWrite)
+		UPROPERTY(Category = "[NOBUNANIM]|Gait Controller|Debug", EditAnywhere, BlueprintReadWrite)
 		bool bShowDebug = false;
 
+		/** Show effector debug. */
+		UPROPERTY(Category = "[NOBUNANIM]|Gait Controller|Debug", EditAnywhere, BlueprintReadWrite)
+		bool bShowLOD = false;
+
+		/** @to do: documentation. */
+		UPROPERTY(Category = "[NOBUNANIM]|Gait Controller|Debug", EditAnywhere, BlueprintReadWrite)
+		UCurveLinearColor* LODsColorGradient = nullptr;
+
+		/** */
 		FVector LastVelocity;
+		
+		/** */
+		int32 CurrentLOD = 0;
+
 
 	public:	
 		// Sets default values for this component's properties
@@ -94,6 +122,10 @@ class NOBUNANIM_API UGaitController : public UActorComponent
 		/** Toggle NOBUNANIM gait controller debug. */
 		UFUNCTION(Exec, Category = "[NOBUNANIM]|Gait Controller")
 		void ShowGaitDebug();
+
+		/** Toggle NOBUNANIM gait controller debug. */
+		UFUNCTION(Exec, Category = "[NOBUNANIM]|Gait Controller")
+		void ShowGaitLOD();
 #endif
 		
 	private:
@@ -104,4 +136,6 @@ class NOBUNANIM_API UGaitController : public UActorComponent
 		bool IsInRange(float Value, float Min, float Max, float& OutRangeMin, float& OutRangeMax);
 
 		void DrawGaitDebug(FVector Position, FVector EffectorLocation, FVector CurrentLocation, float Treshold, bool bAutoAdjustWithIdealEffector, bool bForceSwing, const FGaitDebugData* DebugData);
+
+		void UpdateLOD();
 };
