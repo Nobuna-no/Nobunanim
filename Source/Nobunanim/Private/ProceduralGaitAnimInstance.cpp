@@ -8,35 +8,35 @@ void UProceduralGaitAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 {
 	Super::NativeUpdateAnimation(DeltaSeconds);
 
-	//DeltaTime = DeltaSeconds;
+	DeltaTime = DeltaSeconds;
 	
-	LerpValue = bUseDeltaSecond ? DeltaSeconds * LerpSpeed : LerpSpeed;
+	//LerpValue = bUseDeltaSecond ? DeltaSeconds * LerpSpeed : LerpSpeed;
 }
 
 
-void UProceduralGaitAnimInstance::UpdateEffectorTranslation_Implementation(const FName& TargetBone, FVector Translation)
+void UProceduralGaitAnimInstance::UpdateEffectorTranslation_Implementation(const FName& TargetBone, FVector Translation, float LerpSpeed)
 {
 	const FVector* Vec = EffectorsTranslation.Find(TargetBone);
-	if (Vec)
-	{
-		EffectorsTranslation[TargetBone] = FMath::Lerp(*Vec, Translation, LerpValue);
-	}
-	else
+	if (!Vec)
 	{
 		EffectorsTranslation.Add(TargetBone, Translation);
 	}
+	else
+	{
+		EffectorsTranslation[TargetBone] = FMath::Lerp(*Vec, Translation, LerpSpeed * DeltaTime);
+	}
 }
 
-void UProceduralGaitAnimInstance::UpdateEffectorRotation_Implementation(const FName& TargetBone, FRotator Rotation)
+void UProceduralGaitAnimInstance::UpdateEffectorRotation_Implementation(const FName& TargetBone, FRotator Rotation, float LerpSpeed)
 {
 	const FRotator* Vec = BonesRotation.Find(TargetBone);
-	if (Vec)
+	if (!Vec)
 	{
-		BonesRotation[TargetBone] = FMath::Lerp(*Vec, Rotation, LerpValue);
+		BonesRotation.Add(TargetBone, Rotation);
 	}
 	else
 	{
-		BonesRotation.Add(TargetBone, Rotation);
+		BonesRotation[TargetBone] = FMath::Lerp(*Vec, Rotation, LerpSpeed * DeltaTime);
 	}
 }
 

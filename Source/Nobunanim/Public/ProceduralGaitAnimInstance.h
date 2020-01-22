@@ -17,12 +17,12 @@ class NOBUNANIM_API UProceduralGaitAnimInstance : public UAnimInstance, public I
 	GENERATED_BODY()
 
 	public:
-		/** Lerp speed of effectors. */
-		UPROPERTY(Category = "[NOBUNANIM]|Procedural Gait Anim Instance", EditAnywhere, BlueprintReadWrite)
-		float LerpSpeed = 0.5f;
-		/** May use the deltasecond to calculate the lerp speed. */
-		UPROPERTY(Category = "[NOBUNANIM]|Procedural Gait Anim Instance", EditAnywhere, BlueprintReadWrite)
-		bool bUseDeltaSecond = false;
+		///** Lerp speed of effectors. */
+		//UPROPERTY(Category = "[NOBUNANIM]|Procedural Gait Anim Instance", EditAnywhere, BlueprintReadWrite)
+		//float LerpSpeed = 0.5f;
+		///** May use the deltasecond to calculate the lerp speed. */
+		//UPROPERTY(Category = "[NOBUNANIM]|Procedural Gait Anim Instance", EditAnywhere, BlueprintReadWrite)
+		//bool bUseDeltaSecond = false;
 		/** @todo: documentation. */
 		UPROPERTY(Category = "[NOBUNANIM]|Procedural Gait Anim Instance", VisibleAnywhere, BlueprintReadOnly)
 		TMap<FName, FVector> EffectorsTranslation;
@@ -37,6 +37,7 @@ class NOBUNANIM_API UProceduralGaitAnimInstance : public UAnimInstance, public I
 
 	private:
 		float LerpValue;
+		float DeltaTime = 0.f;
 
 	public:
 		// Native update override point. It is usually a good idea to simply gather data in this step and 
@@ -45,7 +46,7 @@ class NOBUNANIM_API UProceduralGaitAnimInstance : public UAnimInstance, public I
 
 
 	public:
-		void UpdateEffectorTranslation_Implementation(const FName& TargetBone, FVector Translation) override;
-		void UpdateEffectorRotation_Implementation(const FName& TargetBone, FRotator Rotation) override;
+		void UpdateEffectorTranslation_Implementation(const FName& TargetBone, FVector Translation, float LerpSpeed) override;
+		void UpdateEffectorRotation_Implementation(const FName& TargetBone, FRotator Rotation, float LerpSpeed) override;
 		void SetProceduralGaitEnable_Implementation(bool bEnable) override;
 };

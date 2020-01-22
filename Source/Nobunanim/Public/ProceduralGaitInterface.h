@@ -2,7 +2,8 @@
 
 #pragma once
 
-#include "CoreMinimal.h"
+#include <Engine/EngineTypes.h>
+
 #include "UObject/Interface.h"
 #include "ProceduralGaitInterface.generated.h"
 
@@ -23,6 +24,10 @@ struct FGaitTranslationData
 	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Translation", EditAnywhere, BlueprintReadWrite)
 	float TranslationSwingScale = 1.f;
 
+	/** Lerp speed of the translation. */
+	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Translation", EditAnywhere, BlueprintReadWrite)
+	float LerpSpeed = 10.f;
+
 	/** Factor to apply on translation swing.*/
 	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Translation", EditAnywhere, BlueprintReadWrite)
 	FVector TranslationFactor = FVector(1.f, 1.f, 1.f);
@@ -31,8 +36,13 @@ struct FGaitTranslationData
 	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Translation", EditAnywhere, BlueprintReadWrite)
 	FVector Offset;
 
-	/** Should the translation be oriented in the direction of the speed or the front of the actor? */UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Translation", EditAnywhere, BlueprintReadWrite)
+	/** Should the translation be oriented in the direction of the speed or the front of the actor? */
+	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Translation", EditAnywhere, BlueprintReadWrite)
 	bool bOrientToVelocity = true;
+
+	/* @to do: documentation. */
+	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Translation", EditAnywhere, BlueprintReadWrite)
+	bool bAdaptToGroundLevel = true;
 };
 
 
@@ -67,7 +77,48 @@ struct FGaitCorrectionData
 	/** Distance treshold to adjust (if enabled) if too far from ideal effector. */
 	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Correction", EditAnywhere, BlueprintReadWrite)
 	float DistanceTresholdToAdjust = 100.f;
+
+	/** Swing curve.*/
+	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Translation", EditAnywhere, BlueprintReadWrite)
+	UCurveVector* CorrectionSwingTranslationCurve;
+
+	/** Should this effector take collisions into account? */
+	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Correction", EditAnywhere, BlueprintReadWrite)
+	bool bComputeCollision;
+
+	/** Should this effector take collisions into account? */
+	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Correction", EditAnywhere, BlueprintReadWrite)
+	TEnumAsByte<ECollisionChannel> TraceChannel;
+
+	/** Should this effector take collisions into account? */
+	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Correction", EditAnywhere, BlueprintReadWrite)
+	float CollisionRadius = 1.f;
+	
+	
+	/** @to do: documentation. */
+	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Correction", EditAnywhere, BlueprintReadWrite)
+	bool bUseCurrentEffector = false;
+
+	/** The name of the socket or bone to use as origin of the sweep. "None" will result to the use of the effector location. */
+	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Correction", EditAnywhere, BlueprintReadWrite)
+	FName OriginCollisionSocketName;
+
+	/** @to do: documentation. */
+	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Correction", EditAnywhere, BlueprintReadWrite)
+	FVector CollisionSnapOffset;
+
+
+	/** @to do: documentation. */
+	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Correction", EditAnywhere, BlueprintReadWrite)
+	FVector AbsoluteDirection = FVector(0,0,-10.f);
+
+
+
+	/** @to do: documentation. 1: rotation, 2: velocity, 3: absolute direction. */
+	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Correction", EditAnywhere, BlueprintReadWrite)
+	bool bOrientToVelocity = false;
 };
+
 
 /**
 */
@@ -143,9 +194,9 @@ class NOBUNANIM_API IProceduralGaitInterface
 	// Add interface functions to this class. This is the class that will be inherited to implement this interface.
 	public:
 		UFUNCTION(Category = "[NOBUNANIM]|Procedural Gait Interface", BlueprintNativeEvent, BlueprintCallable)
-		void UpdateEffectorTranslation(const FName& TargetBone, FVector Translation);
+		void UpdateEffectorTranslation(const FName& TargetBone, FVector Translation, float LerpSpeed = 10.f);
 		UFUNCTION(Category = "[NOBUNANIM]|Procedural Gait Interface", BlueprintNativeEvent, BlueprintCallable)
-		void UpdateEffectorRotation(const FName& TargetBone, FRotator Rotation);
+		void UpdateEffectorRotation(const FName& TargetBone, FRotator Rotation, float LerpSpeed = 10.f);
 
 		UFUNCTION(Category = "[NOBUNANIM]|Procedural Gait Interface", BlueprintNativeEvent, BlueprintCallable)
 		void SetProceduralGaitEnable(bool bEnable);

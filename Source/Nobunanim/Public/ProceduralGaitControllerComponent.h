@@ -3,15 +3,16 @@
 #include <Runtime/Core/Public/Containers/Map.h>
 #include <Engine/Classes/Components/ActorComponent.h>
 
-#include "GaitController.generated.h"
+#include "ProceduralGaitControllerComponent.generated.h"
 
 class UCurveFloat;
 class UGaitDataAsset;
 class USkeletalMeshComponent;
 class IProceduralGaitInterface;
 class UProceduralGaitAnimInstance;
+
 struct FGaitDebugData;
-class UCurveLinearColor;
+struct FGaitCorrectionData;
 
 DECLARE_DYNAMIC_DELEGATE(FSwingEvent);
 
@@ -26,9 +27,18 @@ struct FGaitEffectorData
 	/** @to do: Documentation. */
 	UPROPERTY(Category = "[NOBUNANIM]|Effector Data", EditAnywhere, BlueprintReadWrite)
 	FVector IdealEffectorLocation = FVector::ZeroVector;
+
+	/** @to do: Documentation. */
+	UPROPERTY(Category = "[NOBUNANIM]|Effector Data", EditAnywhere, BlueprintReadWrite)
+	FVector GroundLocation = FVector::ZeroVector;
+
 	/** @to do: Documentation. */
 	UPROPERTY(Category = "[NOBUNANIM]|Effector Data", EditAnywhere, BlueprintReadWrite)
 	bool bForceSwing = false;
+
+	/** @to do: Documentation. */
+	UPROPERTY(Category = "[NOBUNANIM]|Effector Data", EditAnywhere, BlueprintReadWrite)
+	bool bCorrectionIK = false;
 
 	/** @to do: Documentation. */
 	UPROPERTY(Category = "[NOBUNANIM]|Effector Data", EditAnywhere, BlueprintReadWrite)
@@ -42,14 +52,15 @@ struct FGaitEffectorData
 
 	//FSwingEvent OnBeginForceSwing;
 	//FSwingEvent OnEndForceSwing;
+
+	/** @to do: Documentation. */
 	float BlockTime = -1.f;
-	bool bFlipFlop = false;
 };
 
 
-// RENAME AS UGAITCONTROLLERCOMPONENT
+// RENAME AS UProceduralProceduralGaitControllerComponentComponentCOMPONENT
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
-class NOBUNANIM_API UGaitController : public UActorComponent
+class NOBUNANIM_API UProceduralGaitControllerComponent : public UActorComponent
 {
 	GENERATED_BODY()
 
@@ -63,6 +74,7 @@ class NOBUNANIM_API UGaitController : public UActorComponent
 		/** Owned anim instance. */
 		UProceduralGaitAnimInstance* AnimInstanceRef = nullptr;
 
+
 	protected:
 		/** Owned mesh. */
 		UPROPERTY(Category = "[NOBUNANIM]|Gait Controller", VisibleAnywhere, BlueprintReadOnly)
@@ -72,40 +84,36 @@ class NOBUNANIM_API UGaitController : public UActorComponent
 		UPROPERTY(Category = "[NOBUNANIM]|Gait Controller", EditAnywhere, BlueprintReadOnly)
 		TMap<FName, UGaitDataAsset*> GaitsData;
 
-		/** Map of Gaits data. Keys are the name of the Gait. */
-		//UPROPERTY(Category = "[NOBUNANIM]|Gait Controller", EditAnywhere, BlueprintReadOnly)
-		TMap<FName, FGaitEffectorData> Effectors;
+		
 
 		/** Current playrate of the cycle.*/
 		UPROPERTY(Category = "[NOBUNANIM]|Gait Controller", EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "0.001", ClampMax = "10", SliderMin = "0.001", SliderMax = "10.f"))
 		float PlayRate = 1.f;
-		
-		/** Target FPS for LOD. */
-		UPROPERTY(Category = "[NOBUNANIM]|Gait Controller|Optimization", EditAnywhere, BlueprintReadOnly)
-		TMap<int32, int32> LODTargetFPS;
 
 		/** Show effector debug. */
 		UPROPERTY(Category = "[NOBUNANIM]|Gait Controller|Debug", EditAnywhere, BlueprintReadWrite)
 		bool bShowDebug = false;
 
+#if WITH_EDITOR
 		/** Show effector debug. */
 		UPROPERTY(Category = "[NOBUNANIM]|Gait Controller|Debug", EditAnywhere, BlueprintReadWrite)
 		bool bShowLOD = false;
+#endif
 
+	protected:
+		/** Map of Gaits data. Keys are the name of the Gait. */
+		TMap<FName, FGaitEffectorData> Effectors;
+	
 		/** @to do: documentation. */
-		UPROPERTY(Category = "[NOBUNANIM]|Gait Controller|Debug", EditAnywhere, BlueprintReadWrite)
-		UCurveLinearColor* LODsColorGradient = nullptr;
-
-		/** */
 		FVector LastVelocity;
 		
-		/** */
+		/** @to do: documentation. */
 		int32 CurrentLOD = 0;
 
 
 	public:	
 		// Sets default values for this component's properties
-		UGaitController();
+		UProceduralGaitControllerComponent();
 
 	protected:
 		// Called when the game starts
@@ -119,16 +127,19 @@ class NOBUNANIM_API UGaitController : public UActorComponent
 		void UpdateGaitMode(const FName& NewGaitName);
 
 #if WITH_EDITOR
-		/** Toggle NOBUNANIM gait controller debug. */
+		/** [NOBUNANIM] Toggle procedural gait debug for this actor. */
 		UFUNCTION(Exec, Category = "[NOBUNANIM]|Gait Controller")
 		void ShowGaitDebug();
 
-		/** Toggle NOBUNANIM gait controller debug. */
+		/** [NOBUNANIM] Toggle procedural gait LOD debug for this actor. */
 		UFUNCTION(Exec, Category = "[NOBUNANIM]|Gait Controller")
 		void ShowGaitLOD();
 #endif
 		
 	private:
+		/** .*/
+		void ComputeCollisionCorrection(const FGaitCorrectionData* CorrectionData, FGaitEffectorData& Effector);
+
 		/** Update effectors data.*/
 		void UpdateEffectors();
 
@@ -137,5 +148,11 @@ class NOBUNANIM_API UGaitController : public UActorComponent
 
 		void DrawGaitDebug(FVector Position, FVector EffectorLocation, FVector CurrentLocation, float Treshold, bool bAutoAdjustWithIdealEffector, bool bForceSwing, const FGaitDebugData* DebugData);
 
-		void UpdateLOD();
+		void UpdateLOD(bool bForceUpdate = false);
+
+		bool TraceRay(UWorld* World, TArray<FHitResult>& HitResults, FVector Origin, FVector Dest, TEnumAsByte<ECollisionChannel> TraceChannel, float SphereCastRadius);
+
+		FHitResult& GetBestHitResult(TArray<FHitResult>& HitResults, FVector IdealLocation);
+		
+		//FVector RotateToVelocity(FVector Input);
 };

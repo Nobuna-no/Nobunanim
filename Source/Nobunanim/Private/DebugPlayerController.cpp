@@ -4,7 +4,7 @@
 
 #include "GameFramework/Pawn.h"
 
-#include "GaitController.h"
+#include "ProceduralGaitControllerComponent.h"
 
 
 bool ADebugPlayerController::ProcessConsoleExec(const TCHAR* _Cmd, FOutputDevice& _Ar, UObject* _Executor)
@@ -13,11 +13,11 @@ bool ADebugPlayerController::ProcessConsoleExec(const TCHAR* _Cmd, FOutputDevice
 
 	if (!handled)
 	{
-		TArray<UGaitController*> Children;
-		GetPawn()->GetComponents<UGaitController>(Children);
+		TArray<UProceduralGaitControllerComponent*> Children;
+		GetPawn()->GetComponents<UProceduralGaitControllerComponent>(Children);
 		if (Children.Num())
 		{
-			UGaitController* GaitComponent = Children[0];
+			UProceduralGaitControllerComponent* GaitComponent = Children[0];
 			handled &= GaitComponent->ProcessConsoleExec(_Cmd, _Ar, _Executor);
 		}
 	}
