@@ -87,8 +87,12 @@ class NOBUNANIM_API UProceduralGaitControllerComponent : public UActorComponent
 		
 
 		/** Current playrate of the cycle.*/
-		UPROPERTY(Category = "[NOBUNANIM]|Gait Controller", EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "0.001", ClampMax = "10", SliderMin = "0.001", SliderMax = "10.f"))
+		UPROPERTY(Category = "[NOBUNANIM]|Gait Controller", EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.001", ClampMax = "10", SliderMin = "0.001", SliderMax = "10.f"))
 		float PlayRate = 1.f;
+
+		/** Current playrate of the cycle.*/
+		UPROPERTY(Category = "[NOBUNANIM]|Gait Controller", EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.001", ClampMax = "10", SliderMin = "0.001", SliderMax = "10.f"))
+		bool bGaitActive = true;
 
 		/** Show effector debug. */
 		UPROPERTY(Category = "[NOBUNANIM]|Gait Controller|Debug", EditAnywhere, BlueprintReadWrite)
@@ -109,6 +113,9 @@ class NOBUNANIM_API UProceduralGaitControllerComponent : public UActorComponent
 		
 		/** @to do: documentation. */
 		int32 CurrentLOD = 0;
+
+		/** */
+		bool bLastFrameWasDisable = true;
 
 
 	public:	
@@ -141,7 +148,7 @@ class NOBUNANIM_API UProceduralGaitControllerComponent : public UActorComponent
 		void ComputeCollisionCorrection(const FGaitCorrectionData* CorrectionData, FGaitEffectorData& Effector);
 
 		/** Update effectors data.*/
-		void UpdateEffectors();
+		void UpdateEffectors(const UGaitDataAsset& CurrentAsset);
 
 		/** AARJHALJKDHFLKJDAHL(some kind of dying scream). */
 		bool IsInRange(float Value, float Min, float Max, float& OutRangeMin, float& OutRangeMax);

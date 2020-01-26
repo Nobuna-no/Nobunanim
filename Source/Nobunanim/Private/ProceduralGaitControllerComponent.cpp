@@ -18,6 +18,8 @@
 
 #define ORIENT_TO_VELOCITY(Input) LastVelocity.Rotation().RotateVector(Input)
 
+#define SPHERECAST_IK_CORRECTION_RADIUS 30.f
+
 
 // Sets default values for this component's properties
 UProceduralGaitControllerComponent::UProceduralGaitControllerComponent()
@@ -77,11 +79,15 @@ void UProceduralGaitControllerComponent::BeginPlay()
 
 bool UProceduralGaitControllerComponent::TraceRay(UWorld* World, TArray<FHitResult>& HitResults, FVector Origin, FVector Dest, TEnumAsByte<ECollisionChannel> TraceChannel, float SphereCastRadius)
 {
-	FCollisionQueryParams SweepParam(*GetOwner()->GetName(), false, GetOwner());
-
-#if WITH_EDITOR
 	const FProceduralGaitLODSettings& LODSetting = UNobunanimSettings::GetLODSetting(CurrentLOD);
-#endif
+	
+	// if correction Level0 then zero computation.
+	if (LODSetting.CorrectionLevel == ENobunanimIKCorrectionLevel::IKL_Level0)
+	{
+		return false;
+	}
+
+	FCollisionQueryParams SweepParam(*GetOwner()->GetName(), false, GetOwner());
 
 	bool bFoundHit = World->LineTraceMultiByChannel
 	(
@@ -96,9 +102,14 @@ bool UProceduralGaitControllerComponent::TraceRay(UWorld* World, TArray<FHitResu
 #if WITH_EDITOR
 	if (LODSetting.Debug.bShowCollisionCorrection)
 	{
-		DrawDebugDirectionalArrow(World, Origin, Dest, 5, LODSetting.Debug.IKTraceColor, false, .5f, 0, 0.5f);
+		DrawDebugDirectionalArrow(World, Origin, Dest, 5, LODSetting.Debug.IKTraceColor, false, LODSetting.Debug.IKTraceDuration, 0, 0.5f);
 	}
 #endif
+
+	if (LODSetting.CorrectionLevel == ENobunanimIKCorrectionLevel::IKL_Level1)
+	{
+		return bFoundHit;
+	}
 
 	if (!bFoundHit)
 	{
@@ -117,7 +128,7 @@ bool UProceduralGaitControllerComponent::TraceRay(UWorld* World, TArray<FHitResu
 #if WITH_EDITOR
 		if (LODSetting.Debug.bShowCollisionCorrection)
 		{
-			DrawDebugCapsule(World, (Dest + Origin) * 0.5f, ((Dest - Origin)).Size()* 0.5f, SphereCastRadius, FQuat((Dest - Origin).GetUnsafeNormal().Rotation().GetInverse()), LODSetting.Debug.LODColor, false, 0.5f, 0, .5f);
+			DrawDebugCapsule(World, (Dest + Origin) * 0.5f, ((Dest - Origin)).Size()* 0.5f, SphereCastRadius, FQuat((Origin - Dest).GetUnsafeNormal().Rotation()), LODSetting.Debug.LODColor, false, LODSetting.Debug.IKTraceDuration, 0, .5f);
 		}
 #endif
 	}
@@ -164,23 +175,38 @@ void UProceduralGaitControllerComponent::TickComponent(float DeltaTime, ELevelTi
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	
-	UpdateEffectors();
-	
+	NOBUNANIM_SCOPE_COUNTER(ProceduralGait_Tick);
+
 	FVector NewCurrentLocation;
 	FVector IdealEffectorLocation;
 	FVector CurrentEffectorLocation;
 	float Treshold;
 	bool bForceSwing = false;
 	
-	FVector CurrentVelocity = GetOwner()->GetVelocity();
 	
 	UWorld* World = GetWorld();
+	FVector CurrentVelocity = GetOwner()->GetVelocity();
+
+	if (!bGaitActive)
+	{
+		bLastFrameWasDisable = true;
+	}
 
 	// Update Gaits Data.
-	if (GaitsData.Contains(CurrentGaitMode))
+	if (bGaitActive && GaitsData.Contains(CurrentGaitMode))
 	{
-		UGaitDataAsset& CurrentAsset = *GaitsData[CurrentGaitMode];
+		const UGaitDataAsset& CurrentAsset = *GaitsData[CurrentGaitMode];
 		
+		//if (bGaitActive)
+		//{
+		UpdateEffectors(CurrentAsset);
+		if (bLastFrameWasDisable)
+		{
+			bLastFrameWasDisable = false;
+			return;
+		}
+		//}
+
 		bool bZeroVelocity = CurrentVelocity.SizeSquared() == 0.f;
 		bool bCond = CurrentAsset.bComputeWithVelocityOnly ? !bZeroVelocity : true;
 		
@@ -204,7 +230,7 @@ void UProceduralGaitControllerComponent::TickComponent(float DeltaTime, ELevelTi
 			for (int j = 0, m = SwingValuesKeys.Num(); j < m; ++j)
 			{
 				FName Key = SwingValuesKeys[j];
-				FGaitSwingData& CurrentData = CurrentAsset.GaitSwingValues[Key];
+				const FGaitSwingData& CurrentData = CurrentAsset.GaitSwingValues[Key];
 
 				if (Effectors.Contains(Key))
 				{
@@ -249,7 +275,7 @@ void UProceduralGaitControllerComponent::TickComponent(float DeltaTime, ELevelTi
 							{
 								FVector CurrentCurveValue = CurrentData.RotationData.RotationFactor * CurrentData.RotationData.SwingRotationCurve->GetVectorValue(CurrentCurvePosition);
 
-								AnimInstanceRef->Execute_UpdateEffectorRotation(AnimInstanceRef, Key, OwnedMesh->GetComponentRotation().RotateVector(CurrentCurveValue).Rotation(), CurrentData.TranslationData.LerpSpeed);
+								AnimInstanceRef->Execute_UpdateEffectorRotation(AnimInstanceRef, Key, OwnedMesh->GetComponentRotation().RotateVector(CurrentCurveValue).Rotation(), bLastFrameWasDisable ? 100.f : CurrentData.TranslationData.LerpSpeed);
 							}
 
 							// Step 2.2.1: Apply 'Swing' translation (for effectors IK(socket)).
@@ -276,7 +302,7 @@ void UProceduralGaitControllerComponent::TickComponent(float DeltaTime, ELevelTi
 									NewCurrentLocation.Z += Effector.IdealEffectorLocation.Z - Effector.GroundLocation.Z;
 								}
 
-								AnimInstanceRef->Execute_UpdateEffectorTranslation(AnimInstanceRef, Key, NewCurrentLocation, CurrentData.TranslationData.LerpSpeed);
+								AnimInstanceRef->Execute_UpdateEffectorTranslation(AnimInstanceRef, Key, NewCurrentLocation, !bLastFrameWasDisable, CurrentData.TranslationData.LerpSpeed);
 
 								Effector.CurrentEffectorLocation = NewCurrentLocation;
 							}
@@ -293,11 +319,13 @@ void UProceduralGaitControllerComponent::TickComponent(float DeltaTime, ELevelTi
 								Effector.BlockTime = -1.f;
 
 								// check for foot ik.
-								if (World && !Effector.bCorrectionIK && CurrentData.CorrectionData.bComputeCollision)
+								if (!bLastFrameWasDisable && World && !Effector.bCorrectionIK && CurrentData.CorrectionData.bComputeCollision)
 								{
 									const FProceduralGaitLODSettings& LODSetting = UNobunanimSettings::GetLODSetting(CurrentLOD);
 									if (LODSetting.bCanComputeCollisionCorrection)
 									{
+										NOBUNANIM_SCOPE_COUNTER(ProceduralGait_StanceIKCorrection);
+
 										// Get origin for IK
 										FVector Origin;
 										if (CurrentData.CorrectionData.bUseCurrentEffector)
@@ -320,7 +348,7 @@ void UProceduralGaitControllerComponent::TickComponent(float DeltaTime, ELevelTi
 
 										FCollisionQueryParams SweepParam(*GetOwner()->GetName(), false, GetOwner());
 										TArray<FHitResult> HitResults;
-										bool bFoundHit = TraceRay(World, HitResults, Origin, Dest, CurrentData.CorrectionData.TraceChannel, CurrentData.CorrectionData.CollisionRadius);
+										bool bFoundHit = TraceRay(World, HitResults, Origin, Dest, CurrentData.CorrectionData.TraceChannel, SPHERECAST_IK_CORRECTION_RADIUS);
 
 										/*bool bFoundHit = World->LineTraceMultiByChannel
 										(
@@ -405,7 +433,7 @@ void UProceduralGaitControllerComponent::TickComponent(float DeltaTime, ELevelTi
 											if (HitResult.bBlockingHit)
 											{
 												Effector.CurrentEffectorLocation = HitResult.ImpactPoint + ORIENT_TO_VELOCITY(CurrentData.CorrectionData.CollisionSnapOffset);
-												AnimInstanceRef->Execute_UpdateEffectorTranslation(AnimInstanceRef, Key, Effector.CurrentEffectorLocation, CurrentData.TranslationData.LerpSpeed);
+												//AnimInstanceRef->Execute_UpdateEffectorTranslation(AnimInstanceRef, Key, Effector.CurrentEffectorLocation, !bLastFrameWasDisable, CurrentData.TranslationData.LerpSpeed);
 												Effector.bCorrectionIK = true;
 												//Effector.BlockTime = CurrentData.EndSwing;
 												//Effector.bForceSwing = true;
@@ -414,7 +442,7 @@ void UProceduralGaitControllerComponent::TickComponent(float DeltaTime, ELevelTi
 									}
 								}
 							
-								AnimInstanceRef->Execute_UpdateEffectorTranslation(AnimInstanceRef, Key, Effector.CurrentEffectorLocation, CurrentData.TranslationData.LerpSpeed);
+								AnimInstanceRef->Execute_UpdateEffectorTranslation(AnimInstanceRef, Key, Effector.CurrentEffectorLocation, !bLastFrameWasDisable, CurrentData.TranslationData.LerpSpeed);
 							}
 
 							bForceSwing = Effector.bForceSwing = false;
@@ -427,7 +455,7 @@ void UProceduralGaitControllerComponent::TickComponent(float DeltaTime, ELevelTi
 							Treshold = CurrentData.CorrectionData.DistanceTresholdToAdjust;
 
 							// Step 2.3.1: Check if the effector need to be adjusted
-							if (CurrentAsset.GaitSwingValues[Key].CorrectionData.bAutoAdjustWithIdealEffector)
+							if (!bLastFrameWasDisable && CurrentAsset.GaitSwingValues[Key].CorrectionData.bAutoAdjustWithIdealEffector)
 							{
 								float VectorLength = (Effector.CurrentEffectorLocation - Effector.IdealEffectorLocation).Size2D();
 
@@ -477,70 +505,74 @@ void UProceduralGaitControllerComponent::TickComponent(float DeltaTime, ELevelTi
 				}
 			}
 
-			SwingValuesKeys.Reset(0);
-			CurrentAsset.GroundReflectionPerEffector.GetKeys(SwingValuesKeys);
-			// Step 3: Ground reflection
-			for (int j = 0, m = SwingValuesKeys.Num(); j < m; ++j)
-			{
-				FName Key = SwingValuesKeys[j];
-				FGaitGroundReflectionData& CurrentData = CurrentAsset.GroundReflectionPerEffector[Key];
+			//SwingValuesKeys.Reset(0);
+			//CurrentAsset.GroundReflectionPerEffector.GetKeys(SwingValuesKeys);
+			//// Step 3: Ground reflection
+			//for (int j = 0, m = SwingValuesKeys.Num(); j < m; ++j)
+			//{
+			//	FName Key = SwingValuesKeys[j];
+			//	FGaitGroundReflectionData& CurrentData = CurrentAsset.GroundReflectionPerEffector[Key];
 
-				FRotator FinalRot;
-				for (int k = 0, n = CurrentData.Planes.Num(); k < n; ++k)
-				{
-					if (Effectors.Contains(CurrentData.Planes[k].EffectorName1) 
-						&& Effectors.Contains(CurrentData.Planes[k].EffectorName2)
-						&& Effectors.Contains(CurrentData.Planes[k].EffectorName3))
-					{
-						FVector A = Effectors.Find(CurrentData.Planes[k].EffectorName1)->GroundLocation;
-						FVector B = Effectors.Find(CurrentData.Planes[k].EffectorName2)->GroundLocation;
-						FVector C = Effectors.Find(CurrentData.Planes[k].EffectorName3)->GroundLocation;
-						//FPlane GroundReflection(A, B, C);
+			//	FRotator FinalRot;
+			//	for (int k = 0, n = CurrentData.Planes.Num(); k < n; ++k)
+			//	{
+			//		if (Effectors.Contains(CurrentData.Planes[k].EffectorName1) 
+			//			&& Effectors.Contains(CurrentData.Planes[k].EffectorName2)
+			//			&& Effectors.Contains(CurrentData.Planes[k].EffectorName3))
+			//		{
+			//			FVector A = Effectors.Find(CurrentData.Planes[k].EffectorName1)->GroundLocation;
+			//			FVector B = Effectors.Find(CurrentData.Planes[k].EffectorName2)->GroundLocation;
+			//			FVector C = Effectors.Find(CurrentData.Planes[k].EffectorName3)->GroundLocation;
+			//			//FPlane GroundReflection(A, B, C);
+			//			FVector AP = (A + B) * 0.5f;
+			//			FVector BP = (B + C) * 0.5f;
+			//			FVector CP = (C + A) * 0.5f;
 
-						FVector AB = B - A;
-						FVector AC = C - A;
-						FVector CrossABC = AB ^ AC;
-						CrossABC.Normalize();
+			//			FVector AB = BP - AP;
+			//			FVector AC = CP - AP;
+			//			FVector CrossABC = AB ^ AC;
+			//			CrossABC.Normalize();
 
-						/*float OutPitch = 0, OutRoll = 0;
-						UKismetMathLibrary::GetSlopeDegreeAngles(
-							OwnedMesh->GetRightVector(),
-							CrossABC,
-							FVector(0,0, 1.f),
-							OutPitch,
-							OutRoll
-						);*/
+			//			/*float OutPitch = 0, OutRoll = 0;
+			//			UKismetMathLibrary::GetSlopeDegreeAngles(
+			//				OwnedMesh->GetRightVector(),
+			//				CrossABC,
+			//				FVector(0,0, 1.f),
+			//				OutPitch,
+			//				OutRoll
+			//			);*/
 
-						const FVector FloorZAxis = CrossABC;
-						const FVector FloorXAxis = OwnedMesh->GetRightVector() ^ FloorZAxis;
-						const FVector FloorYAxis = FloorZAxis ^ FloorXAxis;
-						
-						//DEBUG_LOG_FORMAT(Log, "\t=>FloorZAxis: %s\n\t=>FloorXAxis: %s\n\t=>FloorYAxis: %s\n", *FloorZAxis.ToString(), *FloorXAxis.ToString(), *FloorYAxis.ToString());
-						
-						float OutSlopePitchDegreeAngle = 90.f - FMath::RadiansToDegrees(FMath::Acos(FloorXAxis | FVector(0, 0, 1.f)));
-						float OutSlopeRollDegreeAngle = 90.f - FMath::RadiansToDegrees(FMath::Acos(FloorYAxis | FVector(0, 0, 1.f)));
+			//			const FVector FloorZAxis = CrossABC;
+			//			const FVector FloorXAxis = OwnedMesh->GetRightVector() ^ FloorZAxis;
+			//			const FVector FloorYAxis = FloorZAxis ^ FloorXAxis;
+			//			
+			//			//DEBUG_LOG_FORMAT(Log, "\t=>FloorZAxis: %s\n\t=>FloorXAxis: %s\n\t=>FloorYAxis: %s\n", *FloorZAxis.ToString(), *FloorXAxis.ToString(), *FloorYAxis.ToString());
+			//			
+			//			float OutSlopePitchDegreeAngle = 90.f - FMath::RadiansToDegrees(FMath::Acos(FloorXAxis | FVector(0, 0, 1.f)));
+			//			float OutSlopeRollDegreeAngle = 90.f - FMath::RadiansToDegrees(FMath::Acos(FloorYAxis | FVector(0, 0, 1.f)));
 
-						FinalRot.Roll += OutSlopeRollDegreeAngle;
-						FinalRot.Pitch = 0;
-						FinalRot.Yaw += OutSlopePitchDegreeAngle;
+			//			FinalRot.Roll += OutSlopeRollDegreeAngle;
+			//			FinalRot.Pitch = 0;
+			//			FinalRot.Yaw += OutSlopePitchDegreeAngle;
 
-						DrawDebugLine(World, A, B, FColor(255.f, 255.f, 255.f), false, 0.f, 0, 0.5f);
-						DrawDebugLine(World, B, C, FColor(255.f, 255.f, 255.f), false, 0.f, 0, 0.5f);
-						DrawDebugLine(World, C, A, FColor(255.f, 255.f, 255.f), false, 0.f, 0, 0.5f);
-					}
-				}
-							
-				FinalRot.Roll /= (m + 1);
-				FinalRot.Yaw /= (m + 1);
-				FinalRot = FinalRot.GetInverse();
-				AnimInstanceRef->Execute_UpdateEffectorRotation(AnimInstanceRef, Key, FinalRot, 10.f);
-			}
+			//			DrawDebugLine(World, AP, BP, FColor(255.f, 255.f, 255.f), false, 0.f, 0, 0.5f);
+			//			DrawDebugLine(World, BP, CP, FColor(255.f, 255.f, 255.f), false, 0.f, 0, 0.5f);
+			//			DrawDebugLine(World, CP, AP, FColor(255.f, 255.f, 255.f), false, 0.f, 0, 0.5f);
+			//		}
+			//	}
+			//				
+			//	FinalRot.Roll /= (m + 1);
+			//	FinalRot.Yaw /= (m + 1);
+			//	FinalRot = FinalRot.GetInverse();
+			//	AnimInstanceRef->Execute_UpdateEffectorRotation(AnimInstanceRef, Key, FinalRot, 10.f);
+			//}
 		}
 		else
 		{
 			CurrentTime = 0;
 			AnimInstanceRef->Execute_SetProceduralGaitEnable(AnimInstanceRef, false);
 		}
+
 	}
 	else
 	{
@@ -575,8 +607,10 @@ void UProceduralGaitControllerComponent::UpdateGaitMode_Implementation(const FNa
 	}
 }
 
-void UProceduralGaitControllerComponent::UpdateEffectors()
+void UProceduralGaitControllerComponent::UpdateEffectors(const UGaitDataAsset& CurrentAsset)
 {
+	NOBUNANIM_SCOPE_COUNTER(ProceduralGait_UpdateEffectors);
+
 	TArray<FName> Keys;
 	GaitsData.GetKeys(Keys);
 
@@ -588,36 +622,46 @@ void UProceduralGaitControllerComponent::UpdateEffectors()
 
 		for (int j = 0, m = SwingValuesKeys.Num(); j < m; ++j)
 		{
-			FVector EffectorLocation = OwnedMesh->GetSocketLocation(SwingValuesKeys[j]);
-
-			if (Effectors.Contains(SwingValuesKeys[j]))
+			FName Key = SwingValuesKeys[j];
+			FVector EffectorLocation = OwnedMesh->GetSocketLocation(Key);
+			if (Effectors.Contains(Key))
 			{
-				Effectors[SwingValuesKeys[j]].IdealEffectorLocation = EffectorLocation;
+				Effectors[Key].IdealEffectorLocation = EffectorLocation;
 
-				FVector GroundLocation;
-				TArray<FHitResult> HitResults;
-				bool bFound = TraceRay(GetWorld(), HitResults, EffectorLocation, EffectorLocation + FVector(0, 0, -100.f), ECollisionChannel::ECC_WorldStatic, 30.f);
-				if (!bFound)
+				if (CurrentAsset.GaitSwingValues.Contains(Key) && CurrentAsset.GaitSwingValues[Key].TranslationData.bAdaptToGroundLevel)
 				{
-					GroundLocation = EffectorLocation + FVector(0, 0, -100.f);
-				}
-				else
-				{
-					FHitResult& HitResult = GetBestHitResult(HitResults, EffectorLocation);
-					GroundLocation = HitResult.ImpactPoint;
+					FVector GroundLocation;
+					TArray<FHitResult> HitResults;
+					bool bFound = TraceRay(GetWorld(), HitResults, EffectorLocation, EffectorLocation + FVector(0, 0, -100.f), ECollisionChannel::ECC_WorldStatic, SPHERECAST_IK_CORRECTION_RADIUS);
+					if (!bFound)
+					{
+						GroundLocation = EffectorLocation + FVector(0, 0, -100.f);
+					}
+					else
+					{
+						FHitResult& HitResult = GetBestHitResult(HitResults, EffectorLocation);
+						GroundLocation = HitResult.ImpactPoint;
+					}
+
+					Effectors[Key].GroundLocation = GroundLocation;
 				}
 
-				Effectors[SwingValuesKeys[j]].GroundLocation = GroundLocation;
+				if (bLastFrameWasDisable)
+				{
+					Effectors[Key].CurrentEffectorLocation = EffectorLocation;
+					AnimInstanceRef->Execute_UpdateEffectorTranslation(AnimInstanceRef, Key, EffectorLocation, false, 0);
+				}
 			}
 			else
 			{
 				FGaitEffectorData Effector;
 				Effector.IdealEffectorLocation = EffectorLocation;
-				Effectors.Add(SwingValuesKeys[j], Effector);
+				Effectors.Add(Key, Effector);
 			}
 		}
 	}
 }
+
 
 bool UProceduralGaitControllerComponent::IsInRange(float Value, float Min, float Max, float& OutRangeMin, float& OutRangeMax)
 {

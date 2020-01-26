@@ -42,7 +42,6 @@ struct FGaitGroundReflectionData
 {
 	GENERATED_BODY()
 
-public:
 	/** Array of planes defining the ground reflection. */
 	UPROPERTY(Category = "[NOBUNANIM]|Gait Data|Debug", EditAnywhere, BlueprintReadWrite)
 	TArray<FGaitGroundReflectionPlaneData> Planes;

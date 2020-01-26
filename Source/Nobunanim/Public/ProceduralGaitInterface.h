@@ -88,12 +88,7 @@ struct FGaitCorrectionData
 
 	/** Should this effector take collisions into account? */
 	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Correction", EditAnywhere, BlueprintReadWrite)
-	TEnumAsByte<ECollisionChannel> TraceChannel;
-
-	/** Should this effector take collisions into account? */
-	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Correction", EditAnywhere, BlueprintReadWrite)
-	float CollisionRadius = 1.f;
-	
+	TEnumAsByte<ECollisionChannel> TraceChannel;	
 	
 	/** @to do: documentation. */
 	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Correction", EditAnywhere, BlueprintReadWrite)
@@ -111,7 +106,6 @@ struct FGaitCorrectionData
 	/** @to do: documentation. */
 	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Correction", EditAnywhere, BlueprintReadWrite)
 	FVector AbsoluteDirection = FVector(0,0,-10.f);
-
 
 
 	/** @to do: documentation. 1: rotation, 2: velocity, 3: absolute direction. */
@@ -194,7 +188,7 @@ class NOBUNANIM_API IProceduralGaitInterface
 	// Add interface functions to this class. This is the class that will be inherited to implement this interface.
 	public:
 		UFUNCTION(Category = "[NOBUNANIM]|Procedural Gait Interface", BlueprintNativeEvent, BlueprintCallable)
-		void UpdateEffectorTranslation(const FName& TargetBone, FVector Translation, float LerpSpeed = 10.f);
+		void UpdateEffectorTranslation(const FName& TargetBone, FVector Translation, bool bLerp = true, float LerpSpeed = 10.f);
 		UFUNCTION(Category = "[NOBUNANIM]|Procedural Gait Interface", BlueprintNativeEvent, BlueprintCallable)
 		void UpdateEffectorRotation(const FName& TargetBone, FRotator Rotation, float LerpSpeed = 10.f);
 

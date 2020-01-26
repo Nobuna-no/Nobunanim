@@ -25,6 +25,19 @@ struct NOBUNANIM_API FProceduralGaitLODSettingsDebugData
 	/** IK trace color. */
 	UPROPERTY(Category = "[NOBUNANIM]|Settings|Procedural Gait|LOD|Debug", EditAnywhere, Config)
 	FColor IKTraceColor = FColor::Red;
+
+	/** Duration of traces.*/
+	UPROPERTY(Category = "[NOBUNANIM]|Settings|Procedural Gait|LOD|Debug", EditAnywhere, Config)
+	float IKTraceDuration = 0.f;
+};
+
+/** Correction level. */
+UENUM()
+enum class ENobunanimIKCorrectionLevel : uint8
+{
+	IKL_Level0			UMETA(DisplayName = "None"),
+	IKL_Level1			UMETA(DisplayName = "Raycast only"),
+	IKL_Level2			UMETA(DisplayName = "Raycast & Spherecast"),
 };
 
 USTRUCT(BlueprintType)
@@ -40,10 +53,16 @@ struct NOBUNANIM_API FProceduralGaitLODSettings
 	* Can be used to optimized high LOD (far away) by disabling the collision computation. */
 	UPROPERTY(Category = "[NOBUNANIM]|Settings|Procedural Gait|LOD", EditAnywhere, Config)
 	bool bCanComputeCollisionCorrection = true;
-
+	
+	/** Effector correction IK.*/
+	UPROPERTY(Category = "[NOBUNANIM]|Settings|Procedural Gait|LOD", EditAnywhere, Config)
+	ENobunanimIKCorrectionLevel CorrectionLevel = ENobunanimIKCorrectionLevel::IKL_Level1;
+	
+#if WITH_EDITOR
 	/** Debug Data. */
 	UPROPERTY(Category = "[NOBUNANIM]|Settings|Procedural Gait|LOD", EditAnywhere, Config)
 	FProceduralGaitLODSettingsDebugData Debug;
+#endif
 };
 
 UCLASS(Category = "[NOBUNANIM]|Settings", Config = Game, defaultConfig)
