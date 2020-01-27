@@ -25,9 +25,11 @@ FVector UProceduralGaitAnimInstance::TraceRaycast(UWorld* World, FVector Origin,
 		Hit.ImpactPoint = Dest;
 	}
 
-	//DrawDebugLine(World, Origin, Dest, FColor::Cyan, false, 0.f, 0, 0.5f);
-	//DrawDebugPoint(World, Hit.ImpactPoint, 10, FColor::Cyan, false, 0.f);
-
+	if (GroundReflection.bShowDebugPlanes)
+	{
+		DrawDebugLine(World, Origin, Dest, FColor::Cyan, false, 0.f, 0, 0.5f);
+		DrawDebugPoint(World, Hit.ImpactPoint, 10, FColor::Cyan, false, 0.f);
+	}
 	return Hit.ImpactPoint;
 }
 

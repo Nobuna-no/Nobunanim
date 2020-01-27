@@ -421,12 +421,15 @@ void UProceduralGaitControllerComponent::TickComponent(float DeltaTime, ELevelTi
 											{
 												//DrawDebugSphere(World, Origin, CurrentData.CorrectionData.CollisionRadius, 12, LODSetting.Debug.LODColor, false, 0.f);
 												//DrawDebugSphereTraceSingle(,);
-												if (HitResult.bBlockingHit)
+											#if WITH_EDITOR
+												if (LODSetting.Debug.bShowCollisionCorrection)
 												{
-													DrawDebugPoint(World, HitResult.ImpactPoint + ORIENT_TO_VELOCITY(CurrentData.CorrectionData.CollisionSnapOffset), 10.f, FColor::Red, false, 3.f);
-													//DrawDebugPoint(World, HitResult.ImpactPoint + CurrentData.CorrectionData.CollisionSnapOffset, 2.5f, FColor::Orange, false, 5);
-													//DrawDebugLine(World, Origin, Origin + CurrentData.CorrectionData.AbsoluteDirection, FColor::Green, false, 5, 0, .5f);
+													if (HitResult.bBlockingHit)
+													{
+														DrawDebugPoint(World, HitResult.ImpactPoint + ORIENT_TO_VELOCITY(CurrentData.CorrectionData.CollisionSnapOffset), 10.f, FColor::Red, false, 3.f);
+													}
 												}
+											#endif
 											}
 
 											// if hit ground

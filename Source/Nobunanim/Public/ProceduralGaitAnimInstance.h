@@ -38,11 +38,15 @@ struct FGroundReflectionSocketData
 	/** Should use half of the plane's vectors. */
 	UPROPERTY(Category = "[NOBUNANIM]|Procedural Gait Anim Instance", EditAnywhere, BlueprintReadWrite)
 	bool  bUseHalfVector = false;
+
+	/** Lerp speed of effectors. */
+	UPROPERTY(Category = "[NOBUNANIM]|Procedural Gait Anim Instance", EditAnywhere, BlueprintReadWrite)
+	float GroundReflectionLerpSpeed = 10.f;
 };
 
 
 /**
- * 
+ * Only manage 
  */
 UCLASS()
 class NOBUNANIM_API UProceduralGaitAnimInstance : public UAnimInstance, public IProceduralGaitInterface
@@ -81,6 +85,7 @@ class NOBUNANIM_API UProceduralGaitAnimInstance : public UAnimInstance, public I
 		UPROPERTY(Category = "[NOBUNANIM]|Procedural Gait Anim Instance", EditAnywhere, BlueprintReadWrite)
 		float GroundReflectionLerpSpeed = 10.f;
 
+	
 
 	private:
 		float DeltaTime = 0.f;
