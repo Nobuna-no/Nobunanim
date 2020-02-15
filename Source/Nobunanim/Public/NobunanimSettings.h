@@ -49,16 +49,24 @@ struct NOBUNANIM_API FProceduralGaitLODSettings
 	UPROPERTY(Category = "[NOBUNANIM]|Settings|Procedural Gait|LOD", EditAnywhere, Config, meta = (ClampMn = "0"))
 	int32 TargetFPS = 60;
 
+	/** May the delta time be computed as if the game was always running at TargetFPS?. */
+	UPROPERTY(Category = "[NOBUNANIM]|Settings|Procedural Gait|LOD", EditAnywhere, Config)
+	bool bForceDeltaTimeAtTargetFPS = false;
+
 	/** If required, may this LOD be allow to compute collision correction? 
 	* Can be used to optimized high LOD (far away) by disabling the collision computation. */
 	UPROPERTY(Category = "[NOBUNANIM]|Settings|Procedural Gait|LOD", EditAnywhere, Config)
 	bool bCanComputeCollisionCorrection = true;
+
+	/** May the trace be computed with complexes? Disable to gain performance. */
+	UPROPERTY(Category = "[NOBUNANIM]|Settings|Procedural Gait|LOD", EditAnywhere, Config)
+	bool bTraceOnComplex = true;
 	
 	/** Effector correction IK.*/
 	UPROPERTY(Category = "[NOBUNANIM]|Settings|Procedural Gait|LOD", EditAnywhere, Config)
 	ENobunanimIKCorrectionLevel CorrectionLevel = ENobunanimIKCorrectionLevel::IKL_Level1;
 	
-#if WITH_EDITOR
+#if WITH_EDITORONLY_DATA
 	/** Debug Data. */
 	UPROPERTY(Category = "[NOBUNANIM]|Settings|Procedural Gait|LOD", EditAnywhere, Config)
 	FProceduralGaitLODSettingsDebugData Debug;

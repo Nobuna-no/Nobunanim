@@ -15,6 +15,7 @@ struct FGaitDebugData;
 struct FGaitCorrectionData;
 
 DECLARE_DYNAMIC_DELEGATE(FSwingEvent);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnEffectorCollision, FName, EffectorName, FVector, ImpactLocation);
 
 USTRUCT(BlueprintType)
 struct FGaitEffectorData
@@ -54,6 +55,10 @@ struct FGaitEffectorData
 	//FSwingEvent OnEndForceSwing;
 
 	/** @to do: Documentation. */
+	float CurrentBlendValue = 0.f;
+	/** @to do: Documentation. */
+	FName CurrentGait;
+	/** @to do: Documentation. */
 	float BlockTime = -1.f;
 };
 
@@ -66,13 +71,20 @@ class NOBUNANIM_API UProceduralGaitControllerComponent : public UActorComponent
 
 	private:
 		/** Current gait monde name.*/
-		FName CurrentGaitMode = "None";
+		FName CurrentGaitMode;
+		/** Pending gait mode name. Use to switch gaot with blend time. */
+		FName PendingGaitMode = "";
 		/** Current time of the cycle (in absolute time [0,1]).*/
 		float CurrentTime = 0;
 		/** Current time buffer used to compute current time.*/
 		float TimeBuffer = 0;
 		/** Owned anim instance. */
 		UProceduralGaitAnimInstance* AnimInstanceRef = nullptr;
+		/** Current LOD.*/
+		int32 CurrentLOD = 0;
+		/** @to do: document. */
+		bool bBlendIn = true;
+
 
 
 	protected:
@@ -84,7 +96,6 @@ class NOBUNANIM_API UProceduralGaitControllerComponent : public UActorComponent
 		UPROPERTY(Category = "[NOBUNANIM]|Gait Controller", EditAnywhere, BlueprintReadOnly)
 		TMap<FName, UGaitDataAsset*> GaitsData;
 
-		
 
 		/** Current playrate of the cycle.*/
 		UPROPERTY(Category = "[NOBUNANIM]|Gait Controller", EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.001", ClampMax = "10", SliderMin = "0.001", SliderMax = "10.f"))
@@ -98,7 +109,8 @@ class NOBUNANIM_API UProceduralGaitControllerComponent : public UActorComponent
 		UPROPERTY(Category = "[NOBUNANIM]|Gait Controller|Debug", EditAnywhere, BlueprintReadWrite)
 		bool bShowDebug = false;
 
-#if WITH_EDITOR
+		
+#if WITH_EDITORONLY_DATA
 		/** Show effector debug. */
 		UPROPERTY(Category = "[NOBUNANIM]|Gait Controller|Debug", EditAnywhere, BlueprintReadWrite)
 		bool bShowLOD = false;
@@ -111,9 +123,6 @@ class NOBUNANIM_API UProceduralGaitControllerComponent : public UActorComponent
 		/** @to do: documentation. */
 		FVector LastVelocity;
 		
-		/** @to do: documentation. */
-		int32 CurrentLOD = 0;
-
 		/** */
 		bool bLastFrameWasDisable = true;
 
@@ -132,6 +141,11 @@ class NOBUNANIM_API UProceduralGaitControllerComponent : public UActorComponent
 
 		UFUNCTION(Category = "[NOBUNANIM]|Gait Controller", BlueprintNativeEvent, BlueprintCallable)
 		void UpdateGaitMode(const FName& NewGaitName);
+		
+		/** Called each time than an effector that must raise the event enter in collision. */
+		UPROPERTY(Category = "[NOBUNANIM]|Gait Controller|Debug", BlueprintAssignable)
+		FOnEffectorCollision OnCollisionEvent;
+
 
 #if WITH_EDITOR
 		/** [NOBUNANIM] Toggle procedural gait debug for this actor. */
@@ -142,7 +156,8 @@ class NOBUNANIM_API UProceduralGaitControllerComponent : public UActorComponent
 		UFUNCTION(Exec, Category = "[NOBUNANIM]|Gait Controller")
 		void ShowGaitLOD();
 #endif
-		
+
+
 	private:
 		/** .*/
 		void ComputeCollisionCorrection(const FGaitCorrectionData* CorrectionData, FGaitEffectorData& Effector);

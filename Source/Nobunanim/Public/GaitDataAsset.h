@@ -60,9 +60,9 @@ class NOBUNANIM_API UGaitDataAsset : public UPrimaryDataAsset
 		UPROPERTY(Category = "[NOBUNANIM]|Gait Data", EditAnywhere, BlueprintReadOnly)
 		TMap<FName, FGaitSwingData> GaitSwingValues;
 
-		/** @to do: documentation. */
-		UPROPERTY(Category = "[NOBUNANIM]|Gait Data", EditAnywhere, BlueprintReadOnly)
-		TMap<FName, FGaitGroundReflectionData> GroundReflectionPerEffector;
+		///** @to do: documentation. */
+		//UPROPERTY(Category = "[NOBUNANIM]|Gait Data", EditAnywhere, BlueprintReadOnly)
+		//TMap<FName, FGaitGroundReflectionData> GroundReflectionPerEffector;
 
 		/** Animation frame number. 60 frame = 1 second. */
 		UPROPERTY(Category = "[NOBUNANIM]|Gait Data", EditAnywhere, BlueprintReadOnly)

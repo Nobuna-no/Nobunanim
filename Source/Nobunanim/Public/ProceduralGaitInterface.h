@@ -7,7 +7,42 @@
 #include "UObject/Interface.h"
 #include "ProceduralGaitInterface.generated.h"
 
+class UCurveFloat;
 class UCurveVector;
+
+/**
+*/
+USTRUCT(BlueprintType)
+struct FGaitBlendData
+{
+	GENERATED_BODY()
+
+	/** Blend in time in second. */
+	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|Blend", EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0", ClampMax = "5", SliderMin = "0", SliderMax = "5"))
+	float BlendInTime = 0.f;
+
+	/** Blend out time in second. */
+	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|Blend", EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0", ClampMax = "5", SliderMin = "0", SliderMax = "5"))
+	float BlendOutTime = 0.f;
+
+	/** @LerpSpeed acceleration during blend in. */
+	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|Blend", EditAnywhere, BlueprintReadWrite)
+	UCurveFloat* BlendInAcceleration;
+	
+	/** @LerpSpeed acceleration during blend out. */
+	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|Blend", EditAnywhere, BlueprintReadWrite)
+	UCurveFloat* BlendOutAcceleration;
+};
+
+USTRUCT(BlueprintType)
+struct FGaitEventData
+{
+	GENERATED_BODY()
+
+	/** Should this bone raise the event @OnEffectorCollision of the ProceduralGaitComponent. */
+	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|Evet", EditAnywhere, BlueprintReadWrite)
+	bool bRaiseOnCollisionEvent;
+};
 
 /**
 */
@@ -16,7 +51,11 @@ struct FGaitTranslationData
 {
 	GENERATED_BODY()
 
-	/** Swing curve.*/
+	/** Should the translation affect the effector? Usefull for non destructive operation. */
+	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Translation", EditAnywhere, BlueprintReadWrite)
+	bool bAffectEffector = true;
+
+	/** Swing curve. This value is FVector(1,1,1) if the curve is not set. */
 	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Translation", EditAnywhere, BlueprintReadWrite)
 	UCurveVector* SwingTranslationCurve;
 
@@ -28,7 +67,7 @@ struct FGaitTranslationData
 	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Translation", EditAnywhere, BlueprintReadWrite)
 	float LerpSpeed = 10.f;
 
-	/** Factor to apply on translation swing.*/
+	/** Factor to apply on translation swing. */
 	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Translation", EditAnywhere, BlueprintReadWrite)
 	FVector TranslationFactor = FVector(1.f, 1.f, 1.f);
 
@@ -52,6 +91,10 @@ USTRUCT(BlueprintType)
 struct FGaitRotationData
 {
 	GENERATED_BODY()
+
+	/** Should the translation affect the effector? Usefull for non destructive operation. */
+	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Translation", EditAnywhere, BlueprintReadWrite)
+	bool bAffectEffector = false;
 
 	/** @to do: Documentation. */
 	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Rotation", EditAnywhere, BlueprintReadWrite)
@@ -78,7 +121,7 @@ struct FGaitCorrectionData
 	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Correction", EditAnywhere, BlueprintReadWrite)
 	float DistanceTresholdToAdjust = 100.f;
 
-	/** Swing curve.*/
+	/** Swing curve.  This value is FVector(1,1,1) if the curve is not set. */
 	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Translation", EditAnywhere, BlueprintReadWrite)
 	UCurveVector* CorrectionSwingTranslationCurve;
 
@@ -152,6 +195,14 @@ struct FGaitSwingData
 	/** End of the swing in absolute time (0-1).*/
 	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data", EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0", ClampMax = "1", SliderMin = "0", SliderMax = "1"))
 	float EndSwing = 1.f;
+
+	/** @to do: Documentation. */
+	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data", EditAnywhere, BlueprintReadWrite)
+	FGaitBlendData BlendData;
+
+	/** @to do: Documentation. */
+	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data", EditAnywhere, BlueprintReadWrite)
+	FGaitEventData EventData;
 
 	/** @to do: Documentation. */
 	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data", EditAnywhere, BlueprintReadWrite)

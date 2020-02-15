@@ -59,7 +59,19 @@ void UProceduralGaitControllerComponent::BeginPlay()
 					}
 					else
 					{
-						DEBUG_LOG_FORMAT(Warning, "Invalid anim instance own by actor %s.", *Owner->GetName());
+						AnimInstance = OwnedMesh->GetPostProcessInstance();
+						if (AnimInstance)
+						{
+							AnimInstanceRef = Cast<UProceduralGaitAnimInstance>(AnimInstance);
+							if (!AnimInstanceRef)
+							{
+								DEBUG_LOG_FORMAT(Warning, "Invalid anim instance own by actor %s.", *Owner->GetName());
+							}
+						}
+						else
+						{
+							DEBUG_LOG_FORMAT(Warning, "No valid anim instance own by actor %s.", *Owner->GetName());
+						}
 					}
 				}
 				else
@@ -87,7 +99,7 @@ bool UProceduralGaitControllerComponent::TraceRay(UWorld* World, TArray<FHitResu
 		return false;
 	}
 
-	FCollisionQueryParams SweepParam(*GetOwner()->GetName(), false, GetOwner());
+	FCollisionQueryParams SweepParam(*GetOwner()->GetName(), LODSetting.bTraceOnComplex, GetOwner());
 
 	bool bFoundHit = World->LineTraceMultiByChannel
 	(
@@ -138,10 +150,6 @@ bool UProceduralGaitControllerComponent::TraceRay(UWorld* World, TArray<FHitResu
 
 FHitResult& UProceduralGaitControllerComponent::GetBestHitResult(TArray<FHitResult>& HitResults, FVector IdealLocation)
 {
-//#if WITH_EDITOR
-//	const FProceduralGaitLODSettings& LODSetting = UNobunanimSettings::GetLODSetting(CurrentLOD);
-//#endif
-
 	FHitResult& HitResult = HitResults[0];
 
 	float BestDistance = 9999999.f;
@@ -155,16 +163,6 @@ FHitResult& UProceduralGaitControllerComponent::GetBestHitResult(TArray<FHitResu
 			BestDistance = Temp;
 			HitResult = CurrentHit;
 		}
-
-//#if WITH_EDITOR
-//		if (LODSetting.Debug.bShowCollisionCorrection && CurrentHit.bBlockingHit)
-//		{
-//			if (CurrentHit.bBlockingHit)
-//			{
-//				DrawDebugPoint(World, CurrentHit.ImpactPoint, 5.f, FColor::Yellow, false, 3.f);
-//			}
-//		}
-//#endif
 	}
 
 	return HitResult;
@@ -173,16 +171,17 @@ FHitResult& UProceduralGaitControllerComponent::GetBestHitResult(TArray<FHitResu
 // Called every frame
 void UProceduralGaitControllerComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
+	NOBUNANIM_SCOPE_COUNTER(ProceduralGait_Tick);
+
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	
-	NOBUNANIM_SCOPE_COUNTER(ProceduralGait_Tick);
 
 	FVector NewCurrentLocation;
 	FVector IdealEffectorLocation;
 	FVector CurrentEffectorLocation;
-	float Treshold;
+	float Treshold = 0.f;
 	bool bForceSwing = false;
-	
+	bool bAllEffectorBlendOutEnd = true;
 	
 	UWorld* World = GetWorld();
 	FVector CurrentVelocity = GetOwner()->GetVelocity();
@@ -192,11 +191,19 @@ void UProceduralGaitControllerComponent::TickComponent(float DeltaTime, ELevelTi
 		bLastFrameWasDisable = true;
 	}
 
+
+	// force 60 fps refresh rate
+	const FProceduralGaitLODSettings& LODSetting = UNobunanimSettings::GetLODSetting(CurrentLOD);
+	if (LODSetting.bForceDeltaTimeAtTargetFPS)
+	{
+		DeltaTime = 1.f / LODSetting.TargetFPS;
+	}
+
 	// Update Gaits Data.
 	if (bGaitActive && GaitsData.Contains(CurrentGaitMode))
 	{
 		const UGaitDataAsset& CurrentAsset = *GaitsData[CurrentGaitMode];
-		
+
 		//if (bGaitActive)
 		//{
 		UpdateEffectors(CurrentAsset);
@@ -218,7 +225,7 @@ void UProceduralGaitControllerComponent::TickComponent(float DeltaTime, ELevelTi
 			}
 
 			AnimInstanceRef->Execute_SetProceduralGaitEnable(AnimInstanceRef, true);
-
+			
 			// Step 1: Timers.
 			TimeBuffer += (DeltaTime * CurrentAsset.GetFrameRatio() * PlayRate);
 			CurrentTime = FMath::Fmod(TimeBuffer, 1.f);
@@ -236,339 +243,280 @@ void UProceduralGaitControllerComponent::TickComponent(float DeltaTime, ELevelTi
 				{
 					FGaitEffectorData& Effector = Effectors[Key];
 
-					// Step 2.1: Check if valid swing data.
-					if (Effector.bForceSwing)
+					// Update blend value
 					{
-						if (!CurrentData.CorrectionData.CorrectionSwingTranslationCurve)
+						// If there isn't any pending gait, so it's a blend in
+						if (PendingGaitMode.IsNone() || Effector.CurrentGait == PendingGaitMode)
 						{
-							DEBUG_LOG_FORMAT(Warning, "Correction is query but there is no valid CorrectionSwingTranslationCurve. From actor %s.", *GetOwner()->GetName());
-							continue;
-						}
-					}
-					/*else if ((!CurrentData.TranslationData.SwingTranslationCurve || CurrentData.TranslationData.TranslationFactor == FVector::ZeroVector)
-						&& (!CurrentData.RotationData.SwingRotationCurve || CurrentData.RotationData.RotationFactor == FVector::ZeroVector))
-					{
-						continue;
-					}*/
-
-					bool bCanCompute = Effector.BlockTime == -1.f
-						|| (Effector.BlockTime > CurrentData.BeginSwing && CurrentTime >= Effector.BlockTime)
-						|| (Effector.BlockTime < CurrentData.BeginSwing && CurrentTime < CurrentData.BeginSwing && CurrentTime >= Effector.BlockTime);
-
-					if (bCanCompute)
-					{
-						float MinRange, MaxRange;
-						bool InRange = IsInRange(CurrentTime,
-							Effector.bForceSwing ? Effector.BeginForceSwingInterval : CurrentData.BeginSwing,
-							Effector.bForceSwing ? Effector.EndForceSwingInterval : CurrentData.EndSwing,
-							MinRange, MaxRange);
-
-						// Step 2.2: If the effector is in 'Swing'.
-						if (InRange)
-						{
-							Effector.bCorrectionIK = false;
-
-							float CurrentCurvePosition = FMath::GetMappedRangeValueClamped(FVector2D(MinRange, MaxRange), FVector2D(0.f, 1.f), CurrentTime);
-
-							// Step 2.2.1: Apply 'Swing' rotation (for bones).
-							if (CurrentData.RotationData.SwingRotationCurve)
+							if (CurrentData.BlendData.BlendInTime == 0)
 							{
-								FVector CurrentCurveValue = CurrentData.RotationData.RotationFactor * CurrentData.RotationData.SwingRotationCurve->GetVectorValue(CurrentCurvePosition);
-
-								AnimInstanceRef->Execute_UpdateEffectorRotation(AnimInstanceRef, Key, OwnedMesh->GetComponentRotation().RotateVector(CurrentCurveValue).Rotation(), bLastFrameWasDisable ? 100.f : CurrentData.TranslationData.LerpSpeed);
-							}
-
-							// Step 2.2.1: Apply 'Swing' translation (for effectors IK(socket)).
-							if (CurrentData.TranslationData.SwingTranslationCurve || (Effector.bForceSwing && CurrentData.CorrectionData.CorrectionSwingTranslationCurve))
-							{
-								FVector CurrentCurveValue = CurrentData.TranslationData.TranslationFactor * CurrentData.TranslationData.TranslationSwingScale 
-									* (Effector.bForceSwing ? CurrentData.CorrectionData.CorrectionSwingTranslationCurve->GetVectorValue(CurrentCurvePosition) 
-										: CurrentData.TranslationData.SwingTranslationCurve->GetVectorValue(CurrentCurvePosition));
-								
-								CurrentCurveValue = CurrentData.TranslationData.bOrientToVelocity ?
-									ORIENT_TO_VELOCITY(CurrentCurveValue) : OwnedMesh->GetComponentRotation().RotateVector(CurrentCurveValue);
-								FVector Offset = CurrentData.TranslationData.Offset * CurrentData.TranslationData.TranslationFactor;
-								Offset = CurrentData.TranslationData.bOrientToVelocity ?
-									ORIENT_TO_VELOCITY(Offset) : OwnedMesh->GetComponentRotation().RotateVector(Offset);
-
-								CurrentEffectorLocation = Effector.CurrentEffectorLocation;
-								IdealEffectorLocation = Effector.IdealEffectorLocation;
-								NewCurrentLocation = Effector.IdealEffectorLocation + Offset + CurrentCurveValue;
-								Treshold = CurrentData.CorrectionData.DistanceTresholdToAdjust;
-								bForceSwing = Effector.bForceSwing;
-
-								if (CurrentData.TranslationData.bAdaptToGroundLevel)
-								{
-									NewCurrentLocation.Z += Effector.IdealEffectorLocation.Z - Effector.GroundLocation.Z;
-								}
-
-								AnimInstanceRef->Execute_UpdateEffectorTranslation(AnimInstanceRef, Key, NewCurrentLocation, !bLastFrameWasDisable, CurrentData.TranslationData.LerpSpeed);
-
-								Effector.CurrentEffectorLocation = NewCurrentLocation;
-							}
-						}
-						// Step 2.3: If the effector is in 'Stance'.
-						else
-						{
-							if (Effector.bForceSwing)
-							{
-								Effector.BlockTime = CurrentData.EndSwing >= 0.99f ? 0.f : CurrentData.EndSwing;
+								Effector.CurrentBlendValue = 1.f;
 							}
 							else
 							{
-								Effector.BlockTime = -1.f;
-
-								// check for foot ik.
-								if (!bLastFrameWasDisable && World && !Effector.bCorrectionIK && CurrentData.CorrectionData.bComputeCollision)
+								bBlendIn = true;
+								if (Effector.CurrentBlendValue < 1.f)
 								{
-									const FProceduralGaitLODSettings& LODSetting = UNobunanimSettings::GetLODSetting(CurrentLOD);
-									if (LODSetting.bCanComputeCollisionCorrection)
-									{
-										NOBUNANIM_SCOPE_COUNTER(ProceduralGait_StanceIKCorrection);
+									Effector.CurrentBlendValue = FMath::Clamp(Effector.CurrentBlendValue + (DeltaTime / CurrentData.BlendData.BlendInTime), 0.f, 1.f);
+								}
+							}
 
-										// Get origin for IK
-										FVector Origin;
-										if (CurrentData.CorrectionData.bUseCurrentEffector)
+							if (PendingGaitMode.IsNone())
+							{
+								bAllEffectorBlendOutEnd = false;
+							}
+						}
+						else
+						{
+							if (CurrentData.BlendData.BlendOutTime == 0)
+							{
+								Effector.CurrentBlendValue = 0.f;
+								Effector.CurrentGait = PendingGaitMode;
+							}
+							else
+							{
+								bBlendIn = false;
+								if (Effector.CurrentBlendValue > 0.f)
+								{
+									Effector.CurrentBlendValue = FMath::Clamp(Effector.CurrentBlendValue - (DeltaTime / CurrentData.BlendData.BlendOutTime), 0.f, 1.f);
+								}
+
+								// if end blend out, swap gait.
+								if (Effector.CurrentBlendValue == 0.f)
+								{
+									Effector.CurrentGait = PendingGaitMode;
+								}
+							}
+							bAllEffectorBlendOutEnd = false;
+						}
+					}
+
+					// no need to check, check is made when @UpdateGaitMode.
+					const UGaitDataAsset& UpdatedCurrentAsset = *GaitsData[Effector.CurrentGait.IsNone() ? CurrentGaitMode : Effector.CurrentGait];
+					if (UpdatedCurrentAsset.GaitSwingValues.Contains(Key))
+					{
+						const FGaitSwingData& UpdatedCurrentData = UpdatedCurrentAsset.GaitSwingValues[Key];
+
+						// Step 2.1: Check if valid swing data.
+						/*if (Effector.bForceSwing)
+						{
+							if (!CurrentData.CorrectionData.CorrectionSwingTranslationCurve)
+							{
+								DEBUG_LOG_FORMAT(Warning, "Correction is query but there is no valid CorrectionSwingTranslationCurve. From actor %s.", *GetOwner()->GetName());
+								continue;
+							}
+						}*/
+						/*else if ((!CurrentData.TranslationData.SwingTranslationCurve || CurrentData.TranslationData.TranslationFactor == FVector::ZeroVector)
+							&& (!CurrentData.RotationData.SwingRotationCurve || CurrentData.RotationData.RotationFactor == FVector::ZeroVector))
+						{
+							continue;
+						}*/
+
+						bool bCanCompute = Effector.BlockTime == -1.f
+							|| (Effector.BlockTime > UpdatedCurrentData.BeginSwing && CurrentTime >= Effector.BlockTime)
+							|| (Effector.BlockTime < UpdatedCurrentData.BeginSwing && CurrentTime < UpdatedCurrentData.BeginSwing && CurrentTime >= Effector.BlockTime);
+
+						if (bCanCompute)
+						{
+							float MinRange, MaxRange;
+							bool InRange = IsInRange(CurrentTime,
+								Effector.bForceSwing ? Effector.BeginForceSwingInterval : UpdatedCurrentData.BeginSwing,
+								Effector.bForceSwing ? Effector.EndForceSwingInterval : UpdatedCurrentData.EndSwing,
+								MinRange, MaxRange);
+
+							// Step 2.2: If the effector is in 'Swing'.
+							if (InRange)
+							{
+								Effector.bCorrectionIK = false;
+
+								float CurrentCurvePosition = FMath::GetMappedRangeValueClamped(FVector2D(MinRange, MaxRange), FVector2D(0.f, 1.f), CurrentTime);
+								float lerpSpeed = UpdatedCurrentData.TranslationData.LerpSpeed * (Effector.CurrentBlendValue == 1.f ? 1.f : (bBlendIn ? (UpdatedCurrentData.BlendData.BlendInAcceleration ? UpdatedCurrentData.BlendData.BlendInAcceleration->GetFloatValue(Effector.CurrentBlendValue) : 1.f) : (UpdatedCurrentData.BlendData.BlendOutAcceleration ? UpdatedCurrentData.BlendData.BlendOutAcceleration->GetFloatValue(Effector.CurrentBlendValue) : 1.f)));
+
+								// Step 2.2.1: Apply 'Swing' rotation (for bones).
+								if (UpdatedCurrentData.RotationData.bAffectEffector)
+								{
+									FVector CurrentCurveValue = UpdatedCurrentData.RotationData.RotationFactor * (UpdatedCurrentData.RotationData.SwingRotationCurve ? 
+										UpdatedCurrentData.RotationData.SwingRotationCurve->GetVectorValue(CurrentCurvePosition) : FVector(1, 1, 1));
+								
+									AnimInstanceRef->Execute_UpdateEffectorRotation(AnimInstanceRef, Key, FRotator(CurrentCurveValue.X, CurrentCurveValue.Y, CurrentCurveValue.Z)/*OwnedMesh->GetComponentRotation().RotateVector(CurrentCurveValue).Rotation()*/, lerpSpeed);
+								}
+
+								// Step 2.2.1: Apply 'Swing' translation (for effectors IK(socket)).
+								//if (UpdatedCurrentData.TranslationData.SwingTranslationCurve || (Effector.bForceSwing && UpdatedCurrentData.CorrectionData.CorrectionSwingTranslationCurve))
+								if (UpdatedCurrentData.TranslationData.bAffectEffector)
+								{
+									FVector CurrentCurveValue = UpdatedCurrentData.TranslationData.TranslationFactor * UpdatedCurrentData.TranslationData.TranslationSwingScale
+										* (Effector.bForceSwing ? (UpdatedCurrentData.CorrectionData.CorrectionSwingTranslationCurve ? UpdatedCurrentData.CorrectionData.CorrectionSwingTranslationCurve->GetVectorValue(CurrentCurvePosition) : FVector(1, 1, 1))
+											: (UpdatedCurrentData.TranslationData.SwingTranslationCurve ? UpdatedCurrentData.TranslationData.SwingTranslationCurve->GetVectorValue(CurrentCurvePosition) : FVector(1, 1, 1)));
+
+									CurrentCurveValue = UpdatedCurrentData.TranslationData.bOrientToVelocity ?
+										ORIENT_TO_VELOCITY(CurrentCurveValue) : OwnedMesh->GetComponentRotation().RotateVector(CurrentCurveValue);
+
+									FVector Offset = UpdatedCurrentData.TranslationData.Offset * UpdatedCurrentData.TranslationData.TranslationFactor;
+									Offset = UpdatedCurrentData.TranslationData.bOrientToVelocity ?
+										ORIENT_TO_VELOCITY(Offset) : OwnedMesh->GetComponentRotation().RotateVector(Offset);
+
+									CurrentEffectorLocation = Effector.CurrentEffectorLocation;
+									IdealEffectorLocation = Effector.IdealEffectorLocation;
+									NewCurrentLocation = Effector.IdealEffectorLocation + Offset + CurrentCurveValue;
+									Treshold = UpdatedCurrentData.CorrectionData.DistanceTresholdToAdjust;
+									bForceSwing = Effector.bForceSwing;
+
+									if (UpdatedCurrentData.TranslationData.bAdaptToGroundLevel)
+									{
+										NewCurrentLocation.Z += Effector.IdealEffectorLocation.Z - Effector.GroundLocation.Z;
+									}
+
+									AnimInstanceRef->Execute_UpdateEffectorTranslation(AnimInstanceRef, Key, NewCurrentLocation, !bLastFrameWasDisable, lerpSpeed);
+
+									Effector.CurrentEffectorLocation = NewCurrentLocation;
+								}
+							}
+							// Step 2.3: If the effector is in 'Stance'.
+							else
+							{
+								if (Effector.bForceSwing)
+								{
+									Effector.BlockTime = UpdatedCurrentData.EndSwing >= 0.99f ? 0.f : UpdatedCurrentData.EndSwing;
+								}
+								else
+								{
+									Effector.BlockTime = -1.f;
+
+									// check for foot ik.
+									if (!bLastFrameWasDisable && World && !Effector.bCorrectionIK && UpdatedCurrentData.CorrectionData.bComputeCollision)
+									{
+										//const FProceduralGaitLODSettings& LODSetting = UNobunanimSettings::GetLODSetting(CurrentLOD);
+										if (LODSetting.bCanComputeCollisionCorrection)
 										{
-											Origin = Effector.CurrentEffectorLocation;
+											NOBUNANIM_SCOPE_COUNTER(ProceduralGait_StanceIKCorrection);
+
+											// Get origin for IK
+											FVector Origin;
+											if (UpdatedCurrentData.CorrectionData.bUseCurrentEffector)
+											{
+												Origin = Effector.CurrentEffectorLocation;
+											}
+											else
+											{
+												Origin = UpdatedCurrentData.CorrectionData.OriginCollisionSocketName.IsNone() ?
+													OwnedMesh->GetSocketLocation(Key) :
+													OwnedMesh->GetSocketLocation(UpdatedCurrentData.CorrectionData.OriginCollisionSocketName);
+											}
+											FVector Dir = UpdatedCurrentData.CorrectionData.bOrientToVelocity ? ORIENT_TO_VELOCITY(UpdatedCurrentData.CorrectionData.AbsoluteDirection) : UpdatedCurrentData.CorrectionData.AbsoluteDirection;
+
+											// Get Dest
+											FVector Dest = Origin + Dir;
+
+											// Add inverse absolute direction
+											Origin -= Dir;
+
+											FCollisionQueryParams SweepParam(*GetOwner()->GetName(), false, GetOwner());
+											TArray<FHitResult> HitResults;
+											bool bFoundHit = TraceRay(World, HitResults, Origin, Dest, UpdatedCurrentData.CorrectionData.TraceChannel, SPHERECAST_IK_CORRECTION_RADIUS);
+
+
+											if (bFoundHit)
+											{
+
+												FHitResult& HitResult = GetBestHitResult(HitResults, Origin);
+
+												{
+#if WITH_EDITOR
+													if (LODSetting.Debug.bShowCollisionCorrection)
+													{
+														if (HitResult.bBlockingHit)
+														{
+															DrawDebugPoint(World, HitResult.ImpactPoint + ORIENT_TO_VELOCITY(UpdatedCurrentData.CorrectionData.CollisionSnapOffset), 10.f, FColor::Red, false, 3.f);
+														}
+													}
+#endif
+												}
+
+												// if hit ground
+												if (HitResult.bBlockingHit)
+												{
+													Effector.CurrentEffectorLocation = HitResult.ImpactPoint + ORIENT_TO_VELOCITY(UpdatedCurrentData.CorrectionData.CollisionSnapOffset);
+													Effector.bCorrectionIK = true;
+													if (UpdatedCurrentData.EventData.bRaiseOnCollisionEvent)
+													{
+														OnCollisionEvent.Broadcast(Key, Effector.CurrentEffectorLocation);
+													}
+												}
+											}
+										}
+									}
+
+									AnimInstanceRef->Execute_UpdateEffectorTranslation(AnimInstanceRef, Key, Effector.CurrentEffectorLocation, !bLastFrameWasDisable, UpdatedCurrentData.TranslationData.LerpSpeed);
+								}
+
+								bForceSwing = Effector.bForceSwing = false;
+								//Effector.BeginForceSwingInterval = CurrentAsset.GaitSwingValues[Key].BeginSwing;
+								//Effector.EndForceSwingInterval = CurrentAsset.GaitSwingValues[Key].EndSwing;
+
+								CurrentEffectorLocation = Effector.CurrentEffectorLocation;
+								IdealEffectorLocation = Effector.IdealEffectorLocation;
+								NewCurrentLocation = CurrentEffectorLocation;// Effector.IdealEffectorLocation + TranslationData.Offset + CurrentCurveValue;
+								Treshold = UpdatedCurrentData.CorrectionData.DistanceTresholdToAdjust;
+
+								// Step 2.3.1: Check if the effector need to be adjusted
+								if (!bLastFrameWasDisable && CurrentAsset.GaitSwingValues[Key].CorrectionData.bAutoAdjustWithIdealEffector)
+								{
+									float VectorLength = (Effector.CurrentEffectorLocation - Effector.IdealEffectorLocation).Size2D();
+
+									// Is the distance breaking treshold?
+									if (VectorLength >= CurrentAsset.GaitSwingValues[Key].CorrectionData.DistanceTresholdToAdjust)
+									{
+										// Here we compute the new interval of swing.
+										float Begin = CurrentAsset.GaitSwingValues[Key].BeginSwing;
+										float End = CurrentAsset.GaitSwingValues[Key].EndSwing;
+
+										float Alpha = 0.f;
+										if (Begin > End)
+										{
+											Alpha = (1.f - Begin) + End;
 										}
 										else
 										{
-											Origin = CurrentData.CorrectionData.OriginCollisionSocketName.IsNone() ?
-												OwnedMesh->GetSocketLocation(Key) :
-												OwnedMesh->GetSocketLocation(CurrentData.CorrectionData.OriginCollisionSocketName);
+											Alpha = End - Begin;
 										}
-										FVector Dir = CurrentData.CorrectionData.bOrientToVelocity ? ORIENT_TO_VELOCITY(CurrentData.CorrectionData.AbsoluteDirection) : CurrentData.CorrectionData.AbsoluteDirection;
 
-										// Get Dest
-										FVector Dest = Origin + Dir;
-
-										// Add inverse absolute direction
-										Origin -= Dir;
-
-										FCollisionQueryParams SweepParam(*GetOwner()->GetName(), false, GetOwner());
-										TArray<FHitResult> HitResults;
-										bool bFoundHit = TraceRay(World, HitResults, Origin, Dest, CurrentData.CorrectionData.TraceChannel, SPHERECAST_IK_CORRECTION_RADIUS);
-
-										/*bool bFoundHit = World->LineTraceMultiByChannel
-										(
-											HitResults,
-											Origin,
-											Dest,
-											CurrentData.CorrectionData.TraceChannel,
-											SweepParam,
-											FCollisionResponseParams::DefaultResponseParam
-										);
-
-									#if WITH_EDITOR
-										if (LODSetting.Debug.bShowCollisionCorrection)
+										float Beta = CurrentTime + Alpha;
+										// if the end swing is > 1 (absolute time) we just consider that the swing will end the next cycle.
+										if (Beta >= 1.f)
 										{
-											DrawDebugDirectionalArrow(World, Origin, Dest, 5, LODSetting.Debug.IKTraceColor, false, .5f, 0, 0.5f);
+											Beta -= 1.f;
 										}
-									#endif
 
-										if (!bFoundHit)
-										{
-											bFoundHit = World->SweepMultiByChannel
-											(
-												HitResults,
-												Origin,
-												Dest,
-												FQuat::Identity,
-												CurrentData.CorrectionData.TraceChannel,
-												FCollisionShape::MakeSphere(CurrentData.CorrectionData.CollisionRadius),
-												SweepParam,
-												FCollisionResponseParams::DefaultResponseParam
-											);
-
-										#if WITH_EDITOR
-											if (LODSetting.Debug.bShowCollisionCorrection)
-											{
-												DrawDebugCapsule(World, (Dest + Origin) * 0.5f, ((Dest - Origin)).Size()* 0.5f, CurrentData.CorrectionData.CollisionRadius, FQuat((Dest - Origin).GetUnsafeNormal().Rotation().GetInverse()), LODSetting.Debug.LODColor, false, 0.5f, 0, .5f);
-											}
-										#endif
-										}
-									*/
-
-										if (bFoundHit)
-										{
-											
-											FHitResult& HitResult = GetBestHitResult(HitResults, Origin);
-
-											/*float BestDistance = 9999999.f;
-											for (int i = 0, n = HitResults.Num(); i < n; ++i)
-											{
-												FHitResult& CurrentHit = HitResults[i];
-
-												float Temp = FMath::Abs(((Origin) - CurrentHit.ImpactPoint).SizeSquared());
-												if (Temp < BestDistance)
-												{
-													BestDistance = Temp;
-													HitResult = CurrentHit;
-												}
-
-											#if WITH_EDITOR
-												if (LODSetting.Debug.bShowCollisionCorrection && CurrentHit.bBlockingHit)
-												{
-													if (CurrentHit.bBlockingHit)
-													{
-														DrawDebugPoint(World, CurrentHit.ImpactPoint, 5.f, FColor::Yellow, false, 3.f);
-													}
-												}
-											#endif
-											}*/
-
-											{
-												//DrawDebugSphere(World, Origin, CurrentData.CorrectionData.CollisionRadius, 12, LODSetting.Debug.LODColor, false, 0.f);
-												//DrawDebugSphereTraceSingle(,);
-											#if WITH_EDITOR
-												if (LODSetting.Debug.bShowCollisionCorrection)
-												{
-													if (HitResult.bBlockingHit)
-													{
-														DrawDebugPoint(World, HitResult.ImpactPoint + ORIENT_TO_VELOCITY(CurrentData.CorrectionData.CollisionSnapOffset), 10.f, FColor::Red, false, 3.f);
-													}
-												}
-											#endif
-											}
-
-											// if hit ground
-											if (HitResult.bBlockingHit)
-											{
-												Effector.CurrentEffectorLocation = HitResult.ImpactPoint + ORIENT_TO_VELOCITY(CurrentData.CorrectionData.CollisionSnapOffset);
-												//AnimInstanceRef->Execute_UpdateEffectorTranslation(AnimInstanceRef, Key, Effector.CurrentEffectorLocation, !bLastFrameWasDisable, CurrentData.TranslationData.LerpSpeed);
-												Effector.bCorrectionIK = true;
-												//Effector.BlockTime = CurrentData.EndSwing;
-												//Effector.bForceSwing = true;
-											}
-										}
+										Effector.BeginForceSwingInterval = CurrentTime;
+										Effector.EndForceSwingInterval = Beta;
+										bForceSwing = Effector.bForceSwing = true;
+										Effector.BlockTime = -1.f;
 									}
 								}
-							
-								AnimInstanceRef->Execute_UpdateEffectorTranslation(AnimInstanceRef, Key, Effector.CurrentEffectorLocation, !bLastFrameWasDisable, CurrentData.TranslationData.LerpSpeed);
+
+
 							}
-
-							bForceSwing = Effector.bForceSwing = false;
-							//Effector.BeginForceSwingInterval = CurrentAsset.GaitSwingValues[Key].BeginSwing;
-							//Effector.EndForceSwingInterval = CurrentAsset.GaitSwingValues[Key].EndSwing;
-
-							CurrentEffectorLocation = Effector.CurrentEffectorLocation;
-							IdealEffectorLocation = Effector.IdealEffectorLocation;
-							NewCurrentLocation = CurrentEffectorLocation;// Effector.IdealEffectorLocation + TranslationData.Offset + CurrentCurveValue;
-							Treshold = CurrentData.CorrectionData.DistanceTresholdToAdjust;
-
-							// Step 2.3.1: Check if the effector need to be adjusted
-							if (!bLastFrameWasDisable && CurrentAsset.GaitSwingValues[Key].CorrectionData.bAutoAdjustWithIdealEffector)
-							{
-								float VectorLength = (Effector.CurrentEffectorLocation - Effector.IdealEffectorLocation).Size2D();
-
-								// Is the distance breaking treshold?
-								if (VectorLength >= CurrentAsset.GaitSwingValues[Key].CorrectionData.DistanceTresholdToAdjust)
-								{
-									// Here we compute the new interval of swing.
-									float Begin = CurrentAsset.GaitSwingValues[Key].BeginSwing;
-									float End = CurrentAsset.GaitSwingValues[Key].EndSwing;
-
-									float Alpha = 0.f;
-									if (Begin > End)
-									{
-										Alpha = (1.f - Begin) + End;
-									}
-									else
-									{
-										Alpha = End - Begin;
-									}
-
-									float Beta = CurrentTime + Alpha;
-									// if the end swing is > 1 (absolute time) we just consider that the swing will end the next cycle.
-									if (Beta >= 1.f)
-									{
-										Beta -= 1.f;
-									}
-
-									Effector.BeginForceSwingInterval = CurrentTime;
-									Effector.EndForceSwingInterval = Beta;
-									bForceSwing = Effector.bForceSwing = true;
-									Effector.BlockTime = -1.f;
-								}
-							}
-						
-
-						}
 
 #if WITH_EDITOR
-						// Step 3: Draw Debug.
-						{
-							DrawGaitDebug(NewCurrentLocation, IdealEffectorLocation, CurrentEffectorLocation, Treshold,
-								CurrentAsset.GaitSwingValues[Key].CorrectionData.bAutoAdjustWithIdealEffector, bForceSwing,
-								&CurrentAsset.GaitSwingValues[Key].DebugData);
-						}
+							// Step 3: Draw Debug.
+							{
+								DrawGaitDebug(NewCurrentLocation, IdealEffectorLocation, CurrentEffectorLocation, Treshold,
+									CurrentAsset.GaitSwingValues[Key].CorrectionData.bAutoAdjustWithIdealEffector, bForceSwing,
+									&CurrentAsset.GaitSwingValues[Key].DebugData);
+							}
 #endif
+						}
 					}
 				}
 			}
 
-			//SwingValuesKeys.Reset(0);
-			//CurrentAsset.GroundReflectionPerEffector.GetKeys(SwingValuesKeys);
-			//// Step 3: Ground reflection
-			//for (int j = 0, m = SwingValuesKeys.Num(); j < m; ++j)
-			//{
-			//	FName Key = SwingValuesKeys[j];
-			//	FGaitGroundReflectionData& CurrentData = CurrentAsset.GroundReflectionPerEffector[Key];
-
-			//	FRotator FinalRot;
-			//	for (int k = 0, n = CurrentData.Planes.Num(); k < n; ++k)
-			//	{
-			//		if (Effectors.Contains(CurrentData.Planes[k].EffectorName1) 
-			//			&& Effectors.Contains(CurrentData.Planes[k].EffectorName2)
-			//			&& Effectors.Contains(CurrentData.Planes[k].EffectorName3))
-			//		{
-			//			FVector A = Effectors.Find(CurrentData.Planes[k].EffectorName1)->GroundLocation;
-			//			FVector B = Effectors.Find(CurrentData.Planes[k].EffectorName2)->GroundLocation;
-			//			FVector C = Effectors.Find(CurrentData.Planes[k].EffectorName3)->GroundLocation;
-			//			//FPlane GroundReflection(A, B, C);
-			//			FVector AP = (A + B) * 0.5f;
-			//			FVector BP = (B + C) * 0.5f;
-			//			FVector CP = (C + A) * 0.5f;
-
-			//			FVector AB = BP - AP;
-			//			FVector AC = CP - AP;
-			//			FVector CrossABC = AB ^ AC;
-			//			CrossABC.Normalize();
-
-			//			/*float OutPitch = 0, OutRoll = 0;
-			//			UKismetMathLibrary::GetSlopeDegreeAngles(
-			//				OwnedMesh->GetRightVector(),
-			//				CrossABC,
-			//				FVector(0,0, 1.f),
-			//				OutPitch,
-			//				OutRoll
-			//			);*/
-
-			//			const FVector FloorZAxis = CrossABC;
-			//			const FVector FloorXAxis = OwnedMesh->GetRightVector() ^ FloorZAxis;
-			//			const FVector FloorYAxis = FloorZAxis ^ FloorXAxis;
-			//			
-			//			//DEBUG_LOG_FORMAT(Log, "\t=>FloorZAxis: %s\n\t=>FloorXAxis: %s\n\t=>FloorYAxis: %s\n", *FloorZAxis.ToString(), *FloorXAxis.ToString(), *FloorYAxis.ToString());
-			//			
-			//			float OutSlopePitchDegreeAngle = 90.f - FMath::RadiansToDegrees(FMath::Acos(FloorXAxis | FVector(0, 0, 1.f)));
-			//			float OutSlopeRollDegreeAngle = 90.f - FMath::RadiansToDegrees(FMath::Acos(FloorYAxis | FVector(0, 0, 1.f)));
-
-			//			FinalRot.Roll += OutSlopeRollDegreeAngle;
-			//			FinalRot.Pitch = 0;
-			//			FinalRot.Yaw += OutSlopePitchDegreeAngle;
-
-			//			DrawDebugLine(World, AP, BP, FColor(255.f, 255.f, 255.f), false, 0.f, 0, 0.5f);
-			//			DrawDebugLine(World, BP, CP, FColor(255.f, 255.f, 255.f), false, 0.f, 0, 0.5f);
-			//			DrawDebugLine(World, CP, AP, FColor(255.f, 255.f, 255.f), false, 0.f, 0, 0.5f);
-			//		}
-			//	}
-			//				
-			//	FinalRot.Roll /= (m + 1);
-			//	FinalRot.Yaw /= (m + 1);
-			//	FinalRot = FinalRot.GetInverse();
-			//	AnimInstanceRef->Execute_UpdateEffectorRotation(AnimInstanceRef, Key, FinalRot, 10.f);
-			//}
+			// Step 3: if all effector end blend out swtich gait
+			if (bAllEffectorBlendOutEnd == true)
+			{
+				CurrentGaitMode = PendingGaitMode;
+				PendingGaitMode = "";
+			}
 		}
 		else
 		{
@@ -580,7 +528,10 @@ void UProceduralGaitControllerComponent::TickComponent(float DeltaTime, ELevelTi
 	else
 	{
 		CurrentTime = 0;
-		AnimInstanceRef->Execute_SetProceduralGaitEnable(AnimInstanceRef, false);
+		if (AnimInstanceRef)
+		{
+			AnimInstanceRef->Execute_SetProceduralGaitEnable(AnimInstanceRef, false);
+		}
 	}
 
 #if WITH_EDITOR
@@ -600,8 +551,19 @@ void UProceduralGaitControllerComponent::UpdateGaitMode_Implementation(const FNa
 {
 	if (GaitsData.Contains(NewGaitName))
 	{
-		CurrentGaitMode = NewGaitName;
-		SetComponentTickEnabled(true);
+		if (CurrentGaitMode != NewGaitName)
+		{
+			if (CurrentGaitMode.IsNone() || CurrentGaitMode == "None")
+			{
+				CurrentGaitMode = NewGaitName;
+			}
+			else
+			{
+				PendingGaitMode = NewGaitName;
+			}
+			//CurrentGaitMode = NewGaitName;
+			SetComponentTickEnabled(true);
+		}
 	}
 	else
 	{
@@ -721,10 +683,9 @@ void UProceduralGaitControllerComponent::DrawGaitDebug(FVector Position, FVector
 		}
 	}
 
-	if (UNobunanimSettings::GetLODSetting(CurrentLOD).Debug.bShowLOD 
 #if WITH_EDITOR
+	if (UNobunanimSettings::GetLODSetting(CurrentLOD).Debug.bShowLOD 
 		|| bShowLOD
-#endif
 		)
 	{
 		UWorld* World = GetWorld();
@@ -733,6 +694,7 @@ void UProceduralGaitControllerComponent::DrawGaitDebug(FVector Position, FVector
 			DrawDebugSolidBox(World, GetOwner()->GetActorLocation(), GetOwner()->GetSimpleCollisionCylinderExtent(), UNobunanimSettings::GetLODSetting(CurrentLOD).Debug.LODColor, false, 0.f);
 		}
 	}
+#endif
 }
 
 

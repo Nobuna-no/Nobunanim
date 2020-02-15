@@ -13,11 +13,11 @@ bool ADebugPlayerController::ProcessConsoleExec(const TCHAR* _Cmd, FOutputDevice
 
 	if (!handled)
 	{
-		TArray<UProceduralGaitControllerComponent*> Children;
-		GetPawn()->GetComponents<UProceduralGaitControllerComponent>(Children);
-		if (Children.Num())
+		TArray<UProceduralGaitControllerComponent*> ChildrenTmp;
+		GetPawn()->GetComponents<UProceduralGaitControllerComponent>(ChildrenTmp);
+		if (ChildrenTmp.Num())
 		{
-			UProceduralGaitControllerComponent* GaitComponent = Children[0];
+			UProceduralGaitControllerComponent* GaitComponent = ChildrenTmp[0];
 			handled &= GaitComponent->ProcessConsoleExec(_Cmd, _Ar, _Executor);
 		}
 	}

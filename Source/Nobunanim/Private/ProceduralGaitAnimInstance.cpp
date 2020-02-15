@@ -4,14 +4,17 @@
 #include "ProceduralGaitAnimInstance.h"
 
 #include "Nobunanim/Private/Nobunanim.h"
+#include "Nobunanim/Public/NobunanimSettings.h"
 
 #include <Engine/Classes/Kismet/KismetSystemLibrary.h>
 
 
 FVector UProceduralGaitAnimInstance::TraceRaycast(UWorld* World, FVector Origin, FVector Dest)
 {
+	const FProceduralGaitLODSettings& LODSetting = UNobunanimSettings::GetLODSetting(CurrentLOD);
+
 	FCollisionObjectQueryParams ObjectQuery(ECollisionChannel::ECC_WorldStatic);
-	FCollisionQueryParams SweepParam();
+	FCollisionQueryParams SweepParam(*this->GetName(), LODSetting.bTraceOnComplex);
 	FHitResult Hit;
 	if (!World->LineTraceSingleByObjectType
 	(
@@ -46,7 +49,7 @@ void UProceduralGaitAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 		OwnedMesh = GetOwningComponent();
 	}
 
-	int32 CurrentLOD = OwnedMesh->PredictedLODLevel;
+	CurrentLOD = OwnedMesh->PredictedLODLevel;
 	
 	FRotator Rotation(0,0,0);
 	

@@ -90,6 +90,8 @@ class NOBUNANIM_API UProceduralGaitAnimInstance : public UAnimInstance, public I
 	private:
 		float DeltaTime = 0.f;
 		USkeletalMeshComponent* OwnedMesh;
+		/** Current LOD.*/
+		int32 CurrentLOD = 0;
 
 	public:
 		// Native update override point. It is usually a good idea to simply gather data in this step and 
