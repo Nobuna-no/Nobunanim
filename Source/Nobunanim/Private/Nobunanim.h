@@ -8,7 +8,7 @@ DECLARE_LOG_CATEGORY_EXTERN(logNobunanim, Log, All);
 
 DECLARE_STATS_GROUP(TEXT("Nobunanim"), STATGROUP_Nobunanim, STATCAT_Advanced);
 
-#define NOBUNANIM_SCOPE_COUNTER(UniqueFunctionName) DECLARE_SCOPE_CYCLE_COUNTER(TEXT("Nobunanim - " ## #UniqueFunctionName), STAT_##UniqueFunctionName, STATGROUP_Nobunanim);
+#define NOBUNANIM_SCOPE_COUNTER(UniqueFunctionName) DECLARE_SCOPE_CYCLE_COUNTER(TEXT("Nobunanim - " #UniqueFunctionName), STAT_##UniqueFunctionName, STATGROUP_Nobunanim);
 
 
 /** Time when this is called. */
