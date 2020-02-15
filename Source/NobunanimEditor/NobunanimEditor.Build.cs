@@ -21,40 +21,46 @@ public class NobunanimEditor : ModuleRules
             );
 
 
-        PublicDependencyModuleNames.AddRange(
-			new string[]
-			{
-				"Core",
-                "UnrealEd",
-                "ImageWrapper",
-                "AssetRegistry",
-                "PropertyEditor",
-                "AdvancedPreviewScene"
+        PublicDependencyModuleNames.AddRange(new string[]
+        {
+              "AnimGraph",
+        });
 
-				// ... add other public dependencies that you statically link with here ...
-			}
-			);
-			
-		
-		PrivateDependencyModuleNames.AddRange(
-			new string[]
-            {
-                "Projects",
-                "InputCore",
-                "UnrealEd",
-                "LevelEditor",
-                "CoreUObject",
-                "Engine",
-                "Slate",
-                "SlateCore",
-                "ImageWrapper",
-                "AssetRegistry",
-                "PropertyEditor",
-                "AdvancedPreviewScene",
+        PrivateDependencyModuleNames.AddRange(new string[] 
+        {
+            "Core",
+            "CoreUObject",
+            "Engine",
+            "InputCore",
+            "AnimGraph",
+            "BlueprintGraph",
+            "Persona",
+            "UnrealEd",
+            "AnimGraph",
+            "AnimGraphRuntime",
+            "SlateCore",
+            "Nobunanim"
+        });
 
-				// ... add private dependencies that you statically link with here ...	
-			}
-			);
+   //     PrivateDependencyModuleNames.AddRange(
+			//new string[]
+   //         {
+   //             "Projects",
+   //             "InputCore",
+   //             "UnrealEd",
+   //             "LevelEditor",
+   //             "CoreUObject",
+   //             "Engine",
+   //             "Slate",
+   //             "SlateCore",
+   //             "ImageWrapper",
+   //             "AssetRegistry",
+   //             "PropertyEditor",
+   //             "AdvancedPreviewScene",
+
+			//	// ... add private dependencies that you statically link with here ...	
+			//}
+			//);
 		
 		
 		DynamicallyLoadedModuleNames.AddRange(

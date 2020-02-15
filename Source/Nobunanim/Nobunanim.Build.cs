@@ -25,10 +25,10 @@ public class Nobunanim : ModuleRules
 			new string[]
 			{
 				"Core",
-
+                "AnimGraphRuntime",
 				// ... add other public dependencies that you statically link with here ...
 			}
-			);
+            );
 			
 		
 		PrivateDependencyModuleNames.AddRange(
@@ -36,10 +36,9 @@ public class Nobunanim : ModuleRules
             {
                 "CoreUObject",
                 "Engine",
-
 				// ... add private dependencies that you statically link with here ...	
 			}
-			);
+            );
 		
 		
 		DynamicallyLoadedModuleNames.AddRange(
