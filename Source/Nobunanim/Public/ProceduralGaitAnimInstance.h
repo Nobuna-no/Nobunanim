@@ -59,6 +59,26 @@ class UGaitDataAsset;
 //	float BlockTime = -1.f;
 //};
 
+//USTRUCT()
+struct FProceduralGaitAnimInstanceTickFunction : public FTickFunction
+{
+	//GENERATED_BODY()
+
+	/**  AActor  that is the target of this tick **/
+	UProceduralGaitAnimInstance*	Target;
+
+	/**
+		* Abstract function actually execute the tick.
+		* @param DeltaTime - frame time to advance, in seconds
+		* @param TickType - kind of tick for this frame
+		* @param CurrentThread - thread we are executing on, useful to pass along as new tasks are created
+		* @param MyCompletionGraphEvent - completion event for this task. Useful for holding the completetion of this task until certain child tasks are complete.
+	**/
+	virtual void ExecuteTick(float DeltaTime, ELevelTick TickType, ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent) override;
+	/** Abstract function to describe this tick. Used to print messages about illegal cycles in the dependency graph **/
+	virtual FString DiagnosticMessage() override;
+	virtual FName DiagnosticContext(bool bDetailed) override;
+};
 
 /**
 */
@@ -123,7 +143,8 @@ class NOBUNANIM_API UProceduralGaitAnimInstance : public UAnimInstance, public I
 		/** @to do: documentation. */
 		FVector LastVelocity;
 		/** */
-		bool bLastFrameWasDisable = true;
+		//bool bLastFrameWasDisable = true;
+		bool bUpdateGaitActive = false;
 
 
 	protected:
@@ -157,6 +178,8 @@ class NOBUNANIM_API UProceduralGaitAnimInstance : public UAnimInstance, public I
 
 
 	public:
+		//UPROPERTY(EditDefaultsOnly, Category = Tick)
+		FProceduralGaitAnimInstanceTickFunction PrimaryAnimInstanceTick;
 		/** @todo: documentation. */
 		UPROPERTY(Category = "[NOBUNANIM]|Procedural Gait Anim Instance", VisibleAnywhere, BlueprintReadOnly)
 		TMap<FName, FVector> EffectorsTranslation;
@@ -189,6 +212,11 @@ class NOBUNANIM_API UProceduralGaitAnimInstance : public UAnimInstance, public I
 
 	private:
 		float DeltaTime = 0.f;
+		/** Last time from procedural gait update. Use to compute deltatime. */
+		float LastTime = 0.f;
+		/** The timer used for deferred gaits update. */
+		FTimerHandle GaitUpdateTimer;
+
 		//USkeletalMeshComponent* OwnedMesh;
 		/** Current LOD.*/
 		//int32 CurrentLOD = 0;
@@ -200,7 +228,7 @@ class NOBUNANIM_API UProceduralGaitAnimInstance : public UAnimInstance, public I
 		// Native update override point. It is usually a good idea to simply gather data in this step and 
 		// for the bulk of the work to be done in NativeUpdateAnimation.
 		virtual void NativeUpdateAnimation(float DeltaSeconds) override;
-
+		virtual void NativeBeginPlay() override;
 
 	public:
 	/** PROCEDURAL GAIT INTERFACE
@@ -209,10 +237,12 @@ class NOBUNANIM_API UProceduralGaitAnimInstance : public UAnimInstance, public I
 		void UpdateEffectorRotation_Implementation(const FName& TargetBone, FRotator Rotation, float LerpSpeed) override;
 		void SetProceduralGaitEnable_Implementation(bool bEnable) override;
 		
-	protected:
 		/** Update of procedural gait. */
-		void virtual ProceduralGaitUpdadte(float DeltaSeconds);
-		
+		void virtual ProceduralGaitUpdate();
+		//void virtual ProceduralGaitUpdate(float DeltaTime);
+	
+
+	protected:
 		UFUNCTION(Category = "[NOBUNANIM]|Gait Controller", BlueprintNativeEvent, BlueprintCallable)
 		void UpdateGaitMode(const FName& NewGaitName);
 
@@ -248,4 +278,6 @@ class NOBUNANIM_API UProceduralGaitAnimInstance : public UAnimInstance, public I
 		void DrawGaitDebug(FVector Position, FVector EffectorLocation, FVector CurrentLocation, float Treshold, bool bAutoAdjustWithIdealEffector, bool bForceSwing, const FGaitDebugData* DebugData);
 
 		void UpdateLOD(bool bForceUpdate = false);
+
+		void SetProceduralGaitUpdateEnable(bool bEnable);
 };

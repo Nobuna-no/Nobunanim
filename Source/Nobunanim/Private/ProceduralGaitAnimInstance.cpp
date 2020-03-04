@@ -15,6 +15,40 @@
 #define ORIENT_TO_VELOCITY(Input) LastVelocity.Rotation().RotateVector(Input)
 
 #define SPHERECAST_IK_CORRECTION_RADIUS 30.f
+#define MAX_DELTATIME_CLAMP (1.f / 30.f)
+
+
+
+void FProceduralGaitAnimInstanceTickFunction::ExecuteTick(float DeltaTime, enum ELevelTick TickType, ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
+{
+	if (Target && !Target->IsPendingKillOrUnreachable())
+	{
+		if (TickType != LEVELTICK_ViewportsOnly)// || Target->ShouldTickIfViewportsOnly())
+		{
+			FScopeCycleCounterUObject ActorScope(Target);
+			//Target->ProceduralGaitUpdate(DeltaTime);//, TickType, *this);
+		}
+	}
+}
+
+FString FProceduralGaitAnimInstanceTickFunction::DiagnosticMessage()
+{
+	return Target->GetFullName() + TEXT("[ProceduralGaitUpdate]");
+}
+
+FName FProceduralGaitAnimInstanceTickFunction::DiagnosticContext(bool bDetailed)
+{
+	if (bDetailed)
+	{
+		// Format is "ActorNativeClass/ActorClass"
+		FString ContextString = FString::Printf(TEXT("%s/%s"), *GetParentNativeClass(Target->GetClass())->GetName(), *Target->GetClass()->GetName());
+		return FName(*ContextString);
+	}
+	else
+	{
+		return GetParentNativeClass(Target->GetClass())->GetFName();
+	}
+}
 
 
 FVector GetAverage(const TArray<FVector>& Vectors)
@@ -41,16 +75,16 @@ void UProceduralGaitAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 {
 	Super::NativeUpdateAnimation(DeltaSeconds);
 	
-	NOBUNANIM_SCOPE_COUNTER(ProceduralGaitAnimInstance_GlobalUpdate);
+	NOBUNANIM_SCOPE_COUNTER(TerrainPrediction);
 
-	DeltaTime = DeltaSeconds;
+	//DeltaTime = DeltaSeconds;
 	
 	if (!OwnedMesh)
 	{
 		OwnedMesh = GetOwningComponent();
 	}
 
-	CurrentLOD = OwnedMesh->PredictedLODLevel;
+	//CurrentLOD = OwnedMesh->PredictedLODLevel;
 	
 	FRotator Rotation(0,0,0);
 	
@@ -65,16 +99,43 @@ void UProceduralGaitAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 
 	GroundReflectionRotation = FMath::Lerp(GroundReflectionRotation, Rotation.GetInverse(), DeltaSeconds * GroundReflectionLerpSpeed);
 
-	ProceduralGaitUpdadte(DeltaSeconds);
+	UpdateLOD();
+
+	
+	//ProceduralGaitUpdate();
 }
 
+void UProceduralGaitAnimInstance::NativeBeginPlay()
+{
+	Super::NativeBeginPlay();
+
+	PrimaryAnimInstanceTick.TickGroup = TG_PrePhysics;
+	// Default to no tick function, but if we set 'never ticks' to false (so there is a tick function) it is enabled by default
+	PrimaryAnimInstanceTick.bCanEverTick = true;
+	PrimaryAnimInstanceTick.bStartWithTickEnabled = true;
+
+	UpdateLOD(true);
+	/*ACharacter* Chara = Cast<ACharacter>(GetOwningActor());
+	if (Chara)
+	{
+		PrimaryAnimInstanceTick.AddPrerequisite(Chara, Chara->PrimaryActorTick);
+		PrimaryAnimInstanceTick.SetTickFunctionEnable(Chara->PrimaryActorTick.IsTickFunctionEnabled());
+		PrimaryAnimInstanceTick.Target = this;
+		PrimaryAnimInstanceTick.RegisterTickFunction(Chara->GetLevel());
+	}*/
+}
 
 
 #pragma region PROCEDURAL GAIT INTERFACE
 
-void UProceduralGaitAnimInstance::ProceduralGaitUpdadte(float DeltaSeconds)
+void UProceduralGaitAnimInstance::ProceduralGaitUpdate()
 {
-	NOBUNANIM_SCOPE_COUNTER(ProceduralGaitAnimInstance__GaitUpdate);
+	if (!bGaitActive)
+	{
+		return;
+	}
+
+	NOBUNANIM_SCOPE_COUNTER(Gait_Update);
 
 	FVector NewCurrentLocation;
 	FVector IdealEffectorLocation;
@@ -86,11 +147,15 @@ void UProceduralGaitAnimInstance::ProceduralGaitUpdadte(float DeltaSeconds)
 	UWorld* World = GetWorld();
 	FVector CurrentVelocity = GetOwningActor()->GetVelocity();
 
-	if (!bGaitActive)
+	/*if (!bGaitActive)
 	{
 		bLastFrameWasDisable = true;
-	}
+	}*/
 
+
+	//DeltaTime = _DeltaTime;
+	DeltaTime = World->TimeSince(LastTime);// FMath::Min(World->TimeSince(LastTime), MAX_DELTATIME_CLAMP);
+	LastTime = World->TimeSeconds;
 
 	// force 60 fps refresh rate
 	const FProceduralGaitLODSettings& LODSetting = UNobunanimSettings::GetLODSetting(CurrentLOD);
@@ -100,18 +165,18 @@ void UProceduralGaitAnimInstance::ProceduralGaitUpdadte(float DeltaSeconds)
 	}
 
 	// Update Gaits Data.
-	if (bGaitActive && GaitsData.Contains(CurrentGaitMode))
+	if (GaitsData.Contains(CurrentGaitMode))
 	{
 		const UGaitDataAsset& CurrentAsset = *GaitsData[CurrentGaitMode];
 
 		//if (bGaitActive)
 		//{
 		UpdateEffectors(CurrentAsset);
-		if (bLastFrameWasDisable)
+		/*if (bLastFrameWasDisable)
 		{
 			bLastFrameWasDisable = false;
 			return;
-		}
+		}*/
 		//}
 
 		bool bZeroVelocity = CurrentVelocity.SizeSquared() == 0.f;
@@ -124,7 +189,7 @@ void UProceduralGaitAnimInstance::ProceduralGaitUpdadte(float DeltaSeconds)
 				LastVelocity = CurrentVelocity;
 			}
 
-			Execute_SetProceduralGaitEnable(this, true);
+			//Execute_SetProceduralGaitEnable(this, true);
 
 			// Step 1: Timers.
 			TimeBuffer += (DeltaTime * CurrentAsset.GetFrameRatio() * PlayRate);
@@ -136,6 +201,8 @@ void UProceduralGaitAnimInstance::ProceduralGaitUpdadte(float DeltaSeconds)
 			// Step 2: Foreach swing values, we will check if we are in 'Swing' or 'Stance' according to @CurrentTime.
 			for (int j = 0, m = SwingValuesKeys.Num(); j < m; ++j)
 			{
+				NOBUNANIM_SCOPE_COUNTER(Gait_Evaluate_PerEffector);
+
 				FName Key = SwingValuesKeys[j];
 				const FGaitSwingData& CurrentData = CurrentAsset.GaitSwingValues[Key];
 
@@ -214,25 +281,37 @@ void UProceduralGaitAnimInstance::ProceduralGaitUpdadte(float DeltaSeconds)
 							continue;
 						}*/
 
+						float BeginSwing = (UpdatedCurrentAsset.GaitSwingValues.Contains(UpdatedCurrentData.SwingTime.ParentEffector) ? (UpdatedCurrentAsset.GaitSwingValues[Key].BeginSwing) : UpdatedCurrentData.BeginSwing);
+						float EndSwing = (UpdatedCurrentAsset.GaitSwingValues.Contains(UpdatedCurrentData.SwingTime.ParentEffector) ? (UpdatedCurrentAsset.GaitSwingValues[Key].EndSwing) : UpdatedCurrentData.EndSwing);
+
 						bool bCanCompute = Effector.BlockTime == -1.f
-							|| (Effector.BlockTime > UpdatedCurrentData.BeginSwing && CurrentTime >= Effector.BlockTime)
-							|| (Effector.BlockTime < UpdatedCurrentData.BeginSwing && CurrentTime < UpdatedCurrentData.BeginSwing && CurrentTime >= Effector.BlockTime);
+							|| (Effector.BlockTime > BeginSwing && CurrentTime >= Effector.BlockTime)
+							|| (Effector.BlockTime < BeginSwing && CurrentTime < BeginSwing && CurrentTime >= Effector.BlockTime);
 
 						if (bCanCompute)
 						{
 							float MinRange, MaxRange;
-							bool InRange = IsInRange(CurrentTime,
-								Effector.bForceSwing ? Effector.BeginForceSwingInterval : UpdatedCurrentData.BeginSwing,
-								Effector.bForceSwing ? Effector.EndForceSwingInterval : UpdatedCurrentData.EndSwing,
-								MinRange, MaxRange);
+							BeginSwing = Effector.bForceSwing ? Effector.BeginForceSwingInterval : BeginSwing;
+							EndSwing = Effector.bForceSwing ? Effector.EndForceSwingInterval : EndSwing;
+
+							bool InRange = IsInRange(CurrentTime, BeginSwing, EndSwing, MinRange, MaxRange);
 
 							// Step 2.2: If the effector is in 'Swing'.
 							if (InRange)
 							{
+								NOBUNANIM_SCOPE_COUNTER(Gait_Swing);
+
 								Effector.bCorrectionIK = false;
 
 								float CurrentCurvePosition = FMath::GetMappedRangeValueClamped(FVector2D(MinRange, MaxRange), FVector2D(0.f, 1.f), CurrentTime);
-								float lerpSpeed = UpdatedCurrentData.TranslationData.LerpSpeed * (Effector.CurrentBlendValue == 1.f ? 1.f : (bBlendIn ? (UpdatedCurrentData.BlendData.BlendInAcceleration ? UpdatedCurrentData.BlendData.BlendInAcceleration->GetFloatValue(Effector.CurrentBlendValue) : 1.f) : (UpdatedCurrentData.BlendData.BlendOutAcceleration ? UpdatedCurrentData.BlendData.BlendOutAcceleration->GetFloatValue(Effector.CurrentBlendValue) : 1.f)));
+
+								// :D hue hue :D
+								float lerpSpeed = UpdatedCurrentData.TranslationData.LerpSpeed <= 0 ? 0 
+									: UpdatedCurrentData.TranslationData.LerpSpeed * (Effector.CurrentBlendValue == 1.f ? 1.f 
+										: (bBlendIn ? (UpdatedCurrentData.BlendData.BlendInAcceleration ? UpdatedCurrentData.BlendData.BlendInAcceleration->GetFloatValue(Effector.CurrentBlendValue) 
+											: 1.f) 
+											: (UpdatedCurrentData.BlendData.BlendOutAcceleration ? UpdatedCurrentData.BlendData.BlendOutAcceleration->GetFloatValue(Effector.CurrentBlendValue) 
+												: 1.f)));
 
 								// Step 2.2.1: Apply 'Swing' rotation (for bones).
 								if (UpdatedCurrentData.RotationData.bAffectEffector)
@@ -259,17 +338,22 @@ void UProceduralGaitAnimInstance::ProceduralGaitUpdadte(float DeltaSeconds)
 										ORIENT_TO_VELOCITY(Offset) : OwnedMesh->GetComponentRotation().RotateVector(Offset);
 
 									CurrentEffectorLocation = Effector.CurrentEffectorLocation;
-									IdealEffectorLocation = Effector.IdealEffectorLocation;
-									NewCurrentLocation = Effector.IdealEffectorLocation + Offset + CurrentCurveValue;
+
+									
+									IdealEffectorLocation = UpdatedCurrentData.TranslationData.bAdaptToGroundLevel ? Effector.GroundLocation : Effector.IdealEffectorLocation;
+									//IdealEffectorLocation = UpdatedCurrentData.TranslationData.bAdaptToGroundLevel ? Effector.IdealEffectorLocation + (Effector.IdealEffectorLocation  - Effector.GroundLocation) : Effector.IdealEffectorLocation;
+									NewCurrentLocation = IdealEffectorLocation + Offset + CurrentCurveValue;
 									Treshold = UpdatedCurrentData.CorrectionData.DistanceTresholdToAdjust;
 									bForceSwing = Effector.bForceSwing;
 
-									if (UpdatedCurrentData.TranslationData.bAdaptToGroundLevel)
+									/*if (UpdatedCurrentData.TranslationData.bAdaptToGroundLevel)
 									{
-										NewCurrentLocation.Z += Effector.IdealEffectorLocation.Z - Effector.GroundLocation.Z;
-									}
+										NewCurrentLocation = Effector.IdealEffectorLocation.Z - Effector.GroundLocation.Z;
+										
+									}*/
+									
 
-									Execute_UpdateEffectorTranslation(this, Key, NewCurrentLocation, !bLastFrameWasDisable, lerpSpeed);
+									Execute_UpdateEffectorTranslation(this, Key, NewCurrentLocation, lerpSpeed > 0/*!bLastFrameWasDisable*/, lerpSpeed);
 
 									Effector.CurrentEffectorLocation = NewCurrentLocation;
 								}
@@ -286,12 +370,12 @@ void UProceduralGaitAnimInstance::ProceduralGaitUpdadte(float DeltaSeconds)
 									Effector.BlockTime = -1.f;
 
 									// check for foot ik.
-									if (!bLastFrameWasDisable && World && !Effector.bCorrectionIK && UpdatedCurrentData.CorrectionData.bComputeCollision)
+									if (/*!bLastFrameWasDisable &&*/ World && !Effector.bCorrectionIK && UpdatedCurrentData.CorrectionData.bComputeCollision)
 									{
 										//const FProceduralGaitLODSettings& LODSetting = UNobunanimSettings::GetLODSetting(CurrentLOD);
 										if (LODSetting.bCanComputeCollisionCorrection)
 										{
-											NOBUNANIM_SCOPE_COUNTER(ProceduralGait_StanceIKCorrection);
+											NOBUNANIM_SCOPE_COUNTER(Gait_Stance_IKCorrection);
 
 											// Get origin for IK
 											FVector Origin;
@@ -325,7 +409,7 @@ void UProceduralGaitAnimInstance::ProceduralGaitUpdadte(float DeltaSeconds)
 
 												{
 #if WITH_EDITOR
-													if (LODSetting.Debug.bShowCollisionCorrection)
+													if (HitResult.bBlockingHit && LODSetting.Debug.bShowCollisionCorrection)
 													{
 														if (HitResult.bBlockingHit)
 														{
@@ -349,7 +433,7 @@ void UProceduralGaitAnimInstance::ProceduralGaitUpdadte(float DeltaSeconds)
 										}
 									}
 
-									Execute_UpdateEffectorTranslation(this, Key, Effector.CurrentEffectorLocation, !bLastFrameWasDisable, UpdatedCurrentData.TranslationData.LerpSpeed);
+									Execute_UpdateEffectorTranslation(this, Key, Effector.CurrentEffectorLocation, UpdatedCurrentData.TranslationData.LerpSpeed > 0/*!bLastFrameWasDisable*/, UpdatedCurrentData.TranslationData.LerpSpeed);
 								}
 
 								bForceSwing = Effector.bForceSwing = false;
@@ -361,17 +445,19 @@ void UProceduralGaitAnimInstance::ProceduralGaitUpdadte(float DeltaSeconds)
 								NewCurrentLocation = CurrentEffectorLocation;// Effector.IdealEffectorLocation + TranslationData.Offset + CurrentCurveValue;
 								Treshold = UpdatedCurrentData.CorrectionData.DistanceTresholdToAdjust;
 
+								bool bUseParentData = UpdatedCurrentAsset.GaitSwingValues.Contains(UpdatedCurrentData.SwingTime.ParentEffector) && Effectors.Contains(UpdatedCurrentData.SwingTime.ParentEffector);
+								const FGaitCorrectionData& CurrentCorrectionData = UpdatedCurrentAsset.GaitSwingValues.Contains(UpdatedCurrentData.SwingTime.ParentEffector) ? UpdatedCurrentAsset.GaitSwingValues[Key].CorrectionData : UpdatedCurrentData.CorrectionData;
 								// Step 2.3.1: Check if the effector need to be adjusted
-								if (!bLastFrameWasDisable && CurrentAsset.GaitSwingValues[Key].CorrectionData.bAutoAdjustWithIdealEffector)
+								if (CurrentCorrectionData.bAutoAdjustWithIdealEffector)
 								{
 									float VectorLength = (Effector.CurrentEffectorLocation - Effector.IdealEffectorLocation).Size2D();
 
 									// Is the distance breaking treshold?
-									if (VectorLength >= CurrentAsset.GaitSwingValues[Key].CorrectionData.DistanceTresholdToAdjust)
+									if ((bUseParentData && Effectors[UpdatedCurrentData.SwingTime.ParentEffector].bForceSwing) || VectorLength >= UpdatedCurrentData.CorrectionData.DistanceTresholdToAdjust)
 									{
 										// Here we compute the new interval of swing.
-										float Begin = CurrentAsset.GaitSwingValues[Key].BeginSwing;
-										float End = CurrentAsset.GaitSwingValues[Key].EndSwing;
+										float Begin =/* CurrentAsset.GaitSwingValues[Key].*/BeginSwing;
+										float End = /*CurrentAsset.GaitSwingValues[Key].*/EndSwing;
 
 										float Alpha = 0.f;
 										if (Begin > End)
@@ -404,8 +490,8 @@ void UProceduralGaitAnimInstance::ProceduralGaitUpdadte(float DeltaSeconds)
 							// Step 3: Draw Debug.
 							{
 								DrawGaitDebug(NewCurrentLocation, IdealEffectorLocation, CurrentEffectorLocation, Treshold,
-									CurrentAsset.GaitSwingValues[Key].CorrectionData.bAutoAdjustWithIdealEffector, bForceSwing,
-									&CurrentAsset.GaitSwingValues[Key].DebugData);
+									UpdatedCurrentData.CorrectionData.bAutoAdjustWithIdealEffector, bForceSwing,
+									&UpdatedCurrentData.DebugData);
 							}
 #endif
 						}
@@ -423,16 +509,22 @@ void UProceduralGaitAnimInstance::ProceduralGaitUpdadte(float DeltaSeconds)
 		else
 		{
 			CurrentTime = 0;
-			Execute_SetProceduralGaitEnable(this, false);
+			//Execute_SetProceduralGaitEnable(this, false);
 		}
 
 	}
 	else
 	{
 		CurrentTime = 0;
-		Execute_SetProceduralGaitEnable(this, false);
+		//Execute_SetProceduralGaitEnable(this, false);
 	}
 
+
+#if WITH_EDITOR
+	UpdateLOD();
+#else
+	UpdateLOD();
+#endif
 }
 
 void UProceduralGaitAnimInstance::UpdateEffectorTranslation_Implementation(const FName& TargetBone, FVector Translation, bool bLerp, float LerpSpeed)
@@ -463,7 +555,15 @@ void UProceduralGaitAnimInstance::UpdateEffectorRotation_Implementation(const FN
 
 void UProceduralGaitAnimInstance::SetProceduralGaitEnable_Implementation(bool bEnable)
 {
-	GaitActive = bEnable ? 1.f : 0.f;
+	bGaitActive = bEnable ? 1.f : 0.f;
+	
+	SetProceduralGaitUpdateEnable(bGaitActive);
+	//if (!bGaitActive)
+	//{
+	//	// WARNING, clear timer will prevent the procedural gait update!!!
+	//	// GetWorld()->GetTimerManager().ClearTimer(GaitUpdateTimer);
+	//	// GaitActive
+	//}
 }
 
 #pragma endregion
@@ -621,6 +721,7 @@ bool UProceduralGaitAnimInstance::TraceRay(UWorld* World, TArray<FHitResult>& Hi
 	if (LODSetting.Debug.bShowCollisionCorrection)
 	{
 		DrawDebugDirectionalArrow(World, Origin, Dest, 5, LODSetting.Debug.IKTraceColor, false, LODSetting.Debug.IKTraceDuration, 0, 0.5f);
+		DrawDebugPoint(World, Dest, 10, LODSetting.Debug.LODColor, false, LODSetting.Debug.IKTraceDuration);
 	}
 #endif
 
@@ -664,8 +765,8 @@ FHitResult& UProceduralGaitAnimInstance::GetBestHitResult(TArray<FHitResult>& Hi
 	{
 		FHitResult&  CurrentHit = HitResults[i];
 
-		float Temp = FMath::Abs(((IdealLocation)-CurrentHit.ImpactPoint).SizeSquared());
-		if (Temp < BestDistance)
+		float Temp = FMath::Abs(((IdealLocation) - CurrentHit.ImpactPoint).SizeSquared());
+		if (Temp < BestDistance && HitResult.bBlockingHit)
 		{
 			BestDistance = Temp;
 			HitResult = CurrentHit;
@@ -680,22 +781,28 @@ void UProceduralGaitAnimInstance::UpdateGaitMode_Implementation(const FName& New
 {
 	if (GaitsData.Contains(NewGaitName))
 	{
-		if (CurrentGaitMode != NewGaitName)
+		if (CurrentGaitMode != NewGaitName && PendingGaitMode != NewGaitName)
 		{
 			if (CurrentGaitMode.IsNone() || CurrentGaitMode == "None")
 			{
 				CurrentGaitMode = NewGaitName;
+
 			}
 			else
 			{
 				PendingGaitMode = NewGaitName;
 			}
+
+			Execute_SetProceduralGaitEnable(this, true);
+			SetProceduralGaitUpdateEnable(true);
 			//CurrentGaitMode = NewGaitName;
 			//SetComponentTickEnabled(true);
 		}
 	}
 	else
 	{
+		SetProceduralGaitUpdateEnable(false);
+		Execute_SetProceduralGaitEnable(this, false);
 		//SetComponentTickEnabled(false);
 		//DEBUG_LOG_FORMAT(Warning, "Invalid NewGaitName %s. There is no gait data corresponding. Ignored.", NewGaitName);
 	}
@@ -704,55 +811,76 @@ void UProceduralGaitAnimInstance::UpdateGaitMode_Implementation(const FName& New
 
 void UProceduralGaitAnimInstance::UpdateEffectors(const UGaitDataAsset& CurrentAsset)
 {
-	NOBUNANIM_SCOPE_COUNTER(ProceduralGaitAnimInstance_UpdateEffectors);
+	NOBUNANIM_SCOPE_COUNTER(Gait_UpdateEffectors);
 
-	TArray<FName> Keys;
-	GaitsData.GetKeys(Keys);
+	TArray<FName> SwingValuesKeys;
+	const TMap<FName, FGaitSwingData>& SwingValues = CurrentAsset.GaitSwingValues;//GaitsData[Keys[i]]->GaitSwingValues;
+	SwingValues.GetKeys(SwingValuesKeys);
 
-	for (int i = 0, n = Keys.Num(); i < n; ++i)
+	for (int j = 0, m = SwingValuesKeys.Num(); j < m; ++j)
 	{
-		TArray<FName> SwingValuesKeys;
-		TMap<FName, FGaitSwingData>& SwingValues = GaitsData[Keys[i]]->GaitSwingValues;
-		SwingValues.GetKeys(SwingValuesKeys);
+		NOBUNANIM_SCOPE_COUNTER(Gait_UpdateEffector_One);
 
-		for (int j = 0, m = SwingValuesKeys.Num(); j < m; ++j)
+		FName Key = SwingValuesKeys[j];
+		FVector EffectorLocation = OwnedMesh->GetSocketTransform(Key, CurrentAsset.GaitSwingValues[Key].TranslationData.TransformSpace.GetValue()).GetLocation();
+
+		if (Effectors.Contains(Key))
 		{
-			FName Key = SwingValuesKeys[j];
-			FVector EffectorLocation = OwnedMesh->GetSocketLocation(Key);
-			if (Effectors.Contains(Key))
-			{
-				Effectors[Key].IdealEffectorLocation = EffectorLocation;
+			Effectors[Key].IdealEffectorLocation = EffectorLocation;
 
-				if (CurrentAsset.GaitSwingValues.Contains(Key) && CurrentAsset.GaitSwingValues[Key].TranslationData.bAdaptToGroundLevel)
+			if (CurrentAsset.GaitSwingValues[Key].TranslationData.bAdaptToGroundLevel)
+			{
+				FVector Dir = FVector::UpVector;
+				FVector GroundLocation;
+				TArray<FHitResult> HitResults;
+				FVector GroundReferenceLocation = OwnedMesh->GetSocketLocation(CurrentAsset.GaitSwingValues[Key].TranslationData.GroundReferenceSocket);
+				bool bFound = TraceRay(GetWorld(), HitResults, EffectorLocation, FVector(EffectorLocation.X, EffectorLocation.Y, GroundReferenceLocation.Z), ECollisionChannel::ECC_Visibility, SPHERECAST_IK_CORRECTION_RADIUS);
+				if (!bFound)
 				{
-					FVector GroundLocation;
-					TArray<FHitResult> HitResults;
-					bool bFound = TraceRay(GetWorld(), HitResults, EffectorLocation, EffectorLocation + FVector(0, 0, -100.f), ECollisionChannel::ECC_WorldStatic, SPHERECAST_IK_CORRECTION_RADIUS);
-					if (!bFound)
+					//GroundLocation = EffectorLocation + RayVector; 
+					Effectors[Key].GroundLocation = EffectorLocation;
+				}
+				else
+				{
+					FHitResult& HitResult = GetBestHitResult(HitResults, EffectorLocation);
+					if (HitResult.bBlockingHit)
 					{
-						GroundLocation = EffectorLocation + FVector(0, 0, -100.f);
+						GroundLocation = HitResult.ImpactPoint;
+						Dir = HitResult.Normal;
+
+						if (GroundLocation.Z > GroundReferenceLocation.Z)
+						{
+							FVector Correction = Dir * (GroundLocation.Z - GroundReferenceLocation.Z);
+							Effectors[Key].GroundLocation = EffectorLocation + Correction;
+						}
+						else
+						{
+							Effectors[Key].GroundLocation = EffectorLocation;
+						}
 					}
 					else
 					{
-						FHitResult& HitResult = GetBestHitResult(HitResults, EffectorLocation);
-						GroundLocation = HitResult.ImpactPoint;
+						Effectors[Key].GroundLocation = EffectorLocation;
+						//GroundLocation = EffectorLocation + RayVector;
 					}
-
-					Effectors[Key].GroundLocation = GroundLocation;
 				}
 
-				if (bLastFrameWasDisable)
-				{
-					Effectors[Key].CurrentEffectorLocation = EffectorLocation;
-					Execute_UpdateEffectorTranslation(this, Key, EffectorLocation, false, 0);
-				}
+				//Effectors[Key].GroundLocation = GroundLocation;
+				//Effectors[Key].GroundLocation = EffectorLocation;// +(Dir * (Effectors[Key].IdealEffectorLocation.Z - GroundLocation.Z));
+				//Effectors[Key].GroundLocation.X = Effectors[Key].GroundLocation.Y = 0.f;
 			}
-			else
+
+			/*if (bLastFrameWasDisable)
 			{
-				FGaitEffectorData Effector;
-				Effector.IdealEffectorLocation = EffectorLocation;
-				Effectors.Add(Key, Effector);
-			}
+				Effectors[Key].CurrentEffectorLocation = EffectorLocation;
+				Execute_UpdateEffectorTranslation(this, Key, EffectorLocation, false, 0);
+			}*/
+		}
+		else
+		{
+			FGaitEffectorData Effector;
+			Effector.IdealEffectorLocation = EffectorLocation;
+			Effectors.Add(Key, Effector);
 		}
 	}
 }
@@ -784,6 +912,8 @@ bool UProceduralGaitAnimInstance::IsInRange(float Value, float Min, float Max, f
 
 void UProceduralGaitAnimInstance::DrawGaitDebug(FVector Position, FVector EffectorLocation, FVector CurrentLocation, float Treshold, bool bAutoAdjustWithIdealEffector, bool bForceSwing, const FGaitDebugData* DebugData)
 {
+	NOBUNANIM_SCOPE_COUNTER(ProceduralGaitAnimInstance__DrawGaitDebug);
+
 	if (bShowDebug && DebugData->bDrawDebug)
 	{
 		UWorld* World = GetWorld();
@@ -825,8 +955,39 @@ void UProceduralGaitAnimInstance::UpdateLOD(bool bForceUpdate)
 	if (CurrentLOD != OwnedMesh->PredictedLODLevel
 		|| bForceUpdate)
 	{
-		// Replace with timer...
-		//SetComponentTickInterval(1.f / (float)UNobunanimSettings::GetLODSetting(CurrentLOD = OwnedMesh->PredictedLODLevel).TargetFPS);// LODTargetFPS[CurrentLOD = OwnedMesh->PredictedLODLevel]);
+		CurrentLOD = OwnedMesh->PredictedLODLevel;
+
+		// If procedural gait update is running, hard reset to adapt framerate.
+		if (bUpdateGaitActive)
+		{
+			float Delay = 1.f / (float)UNobunanimSettings::GetLODSetting(CurrentLOD = OwnedMesh->PredictedLODLevel).TargetFPS;
+			// Set timer will auto-clear if needed.
+			GetWorld()->GetTimerManager().SetTimer(GaitUpdateTimer, [this]() { ProceduralGaitUpdate(); }, Delay, true, false);
+		}
 	}
 }
+
+void UProceduralGaitAnimInstance::SetProceduralGaitUpdateEnable(bool bEnable)
+{
+	UWorld* World = GetWorld();
+	if (!World || !World->IsGameWorld())
+	{
+		return;
+	}
+	
+	if (bEnable && !bUpdateGaitActive)
+	{
+		bUpdateGaitActive = true;
+		float Delay = 1.f / (float)UNobunanimSettings::GetLODSetting(CurrentLOD = OwnedMesh->PredictedLODLevel).TargetFPS;
+		// Set timer will auto-clear if needed.
+		World->GetTimerManager().SetTimer(GaitUpdateTimer, [this]() { ProceduralGaitUpdate(); }, Delay, true, false);
+	}
+	else if(!bEnable && bUpdateGaitActive)
+	{
+		bUpdateGaitActive = false;
+
+		World->GetTimerManager().ClearTimer(GaitUpdateTimer);
+	}
+}
+
 #pragma endregion
