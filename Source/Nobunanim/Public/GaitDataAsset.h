@@ -44,8 +44,8 @@ struct FGaitGroundReflectionData
 
 	/** Array of planes defining the ground reflection. */
 	UPROPERTY(Category = "[NOBUNANIM]|Gait Data|Debug", EditAnywhere, BlueprintReadWrite)
-	TArray<FGaitGroundReflectionPlaneData> Planes;
-};
+	TArray<FGaitGroundReflectionPlaneData> Planes;};
+
 
 /**
  * 

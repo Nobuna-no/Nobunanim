@@ -13,6 +13,25 @@ class UCurveVector;
 /**
 */
 USTRUCT(BlueprintType)
+struct FGaitSwingTimeData
+{
+	GENERATED_BODY()
+
+	///** Begin of the swing in absolute time (0-1).*/
+	//UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data", EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0", ClampMax = "1", SliderMin = "0", SliderMax = "1"))
+	//float BeginSwing = 0.f;
+	///** End of the swing in absolute time (0-1).*/
+	//UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data", EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0", ClampMax = "1", SliderMin = "0", SliderMax = "1"))
+	//float EndSwing = 1.f;
+
+	/** The name of the effector to link to. If valid, this effector will swing at the same time as the parent. Begin swing and End swing will be considered as offset (i.e. EndSwing = 0.1 will end at parent EndSwing + 0.1)*/
+	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data", EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0", ClampMax = "1", SliderMin = "0", SliderMax = "1"))
+	FName ParentEffector;
+};
+
+/**
+*/
+USTRUCT(BlueprintType)
 struct FGaitBlendData
 {
 	GENERATED_BODY()
@@ -55,6 +74,10 @@ struct FGaitTranslationData
 	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Translation", EditAnywhere, BlueprintReadWrite)
 	bool bAffectEffector = true;
 
+	/** Transform space to compute effector. */
+	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Translation", EditAnywhere, BlueprintReadWrite)
+	TEnumAsByte<ERelativeTransformSpace> TransformSpace = ERelativeTransformSpace::RTS_World;
+
 	/** Swing curve. This value is FVector(1,1,1) if the curve is not set. */
 	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Translation", EditAnywhere, BlueprintReadWrite)
 	UCurveVector* SwingTranslationCurve;
@@ -63,7 +86,7 @@ struct FGaitTranslationData
 	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Translation", EditAnywhere, BlueprintReadWrite)
 	float TranslationSwingScale = 1.f;
 
-	/** Lerp speed of the translation. */
+	/** Lerp speed of the translation. Null or Negative lerp speed means no lerp at all. */
 	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Translation", EditAnywhere, BlueprintReadWrite)
 	float LerpSpeed = 10.f;
 
@@ -82,6 +105,14 @@ struct FGaitTranslationData
 	/* @to do: documentation. */
 	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Translation", EditAnywhere, BlueprintReadWrite)
 	bool bAdaptToGroundLevel = true;
+
+	/** The socket to take as ref for the ground adaptation. */
+	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Translation", EditAnywhere, BlueprintReadWrite)
+	FName GroundReferenceSocket;
+	
+	/** @to do: Documentation. */
+	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data|New|Translation", EditAnywhere, BlueprintReadWrite)
+	float GroundReferenceZOffset = -20.f;
 };
 
 
@@ -195,6 +226,10 @@ struct FGaitSwingData
 	/** End of the swing in absolute time (0-1).*/
 	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data", EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0", ClampMax = "1", SliderMin = "0", SliderMax = "1"))
 	float EndSwing = 1.f;
+
+	/** Swing time info. */
+	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data", EditAnywhere, BlueprintReadWrite)
+	FGaitSwingTimeData SwingTime;
 
 	/** @to do: Documentation. */
 	UPROPERTY(Category = "[NOBUNANIM]|Gait Swing Data", EditAnywhere, BlueprintReadWrite)
