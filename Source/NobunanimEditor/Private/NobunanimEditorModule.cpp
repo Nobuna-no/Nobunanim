@@ -1,7 +1,7 @@
 // Copyright 2017 Google Inc.
 
 #include "NobunanimEditorModule.h"
-#include "Private/NobunanimEditor.h"
+#include "NobunanimEditor.h"
 #include "Textures/SlateIcon.h"
 #include "SafeCCDIKEditMode.h"
 

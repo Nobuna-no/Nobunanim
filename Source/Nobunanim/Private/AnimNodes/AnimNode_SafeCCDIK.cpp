@@ -1,6 +1,6 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-#include "AnimNode_SafeCCDIK.h"
+#include "../../Public/AnimNodes/AnimNode_SafeCCDIK.h"
 #include "Animation/AnimTypes.h"
 #include "AnimationRuntime.h"
 #include "DrawDebugHelpers.h"

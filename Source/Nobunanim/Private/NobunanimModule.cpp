@@ -1,7 +1,7 @@
 // Copyright 2017 Google Inc.
 
 #include "NobunanimModule.h"
-#include "Private/Nobunanim.h"
+#include "Nobunanim.h"
 
 DEFINE_LOG_CATEGORY(logNobunanim)
 
